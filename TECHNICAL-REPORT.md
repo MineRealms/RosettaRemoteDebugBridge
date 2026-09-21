@@ -1,539 +1,640 @@
-# RainJava 1.0.0 — 重建项目技术报告与使用指南
+# RainJava 技术报告
 
-> 适用版本: Minecraft 1.20.1 / Forge 47.4.10 / Java 17
-> 项目位置: `H:\MinecraftMods\RainJava-work\RainJava-MDK`
+> 分析对象:**RainJava 1.0.0**(Forge 1.20.1 / Minecraft 1.20.1 / Java 17)
+> 依据:项目反编译源码、依赖 jar 的字节码级分析、运行时实测日志
+> 报告定位:描述该 mod 的**系统设计、内部实现、脚本 API 与技术评估**
 
 ---
 
 ## 目录
 
-1. [项目概览](#1-项目概览)
-2. [原始工件清单](#2-原始工件清单)
-3. [混淆状态判定(关键结论)](#3-混淆状态判定关键结论)
-4. [逆向分析过程](#4-逆向分析过程)
-5. [工程重建(MDK)](#5-工程重建mdk)
-6. [运行时问题与修复](#6-运行时问题与修复)
-7. [全自动测试方案](#7-全自动测试方案)
-8. [ProGuard 反混淆工具](#8-proguard-反混淆工具)
-9. [项目结构说明](#9-项目结构说明)
-10. [使用指南](#10-使用指南)
-11. [已知限制与后续工作](#11-已知限制与后续工作)
-12. [附录](#12-附录)
+1. [项目概述](#1-项目概述)
+2. [总体架构](#2-总体架构)
+3. [脚本执行引擎](#3-脚本执行引擎)
+4. [脚本 API](#4-脚本-api)
+5. [Mixin / CoreMod 子系统](#5-mixin--coremod-子系统)
+6. [命令与权限](#6-命令与权限)
+7. [日志与错误系统](#7-日志与错误系统)
+8. [典型数据流](#8-典型数据流)
+9. [技术评估](#9-技术评估)
+10. [附录](#10-附录)
 
 ---
 
-## 1. 项目概览
+## 1. 项目概述
 
-### 1.1 目标
+### 1.1 定位
 
-作者(RainMelody)提供的 `RainJava-main.zip` 只有构建脚本、ProGuard 混淆配置和混淆映射表,没有源码(`src/` 不存在)。目标是从公开发布的 jar 出发,重建出一个:
+RainJava 是一个**运行期 Java 脚本引擎 mod**:用户把普通 `.java` 源码放入游戏目录的
+`RainJava/` 文件夹,mod 在启动、开服、客户端初始化等时机**在内存中编译并执行**这些脚本,
+并提供 `/java` 命令族进行热重载与错误查看。其宣传的核心能力包括:
 
-- **可编译**的 Forge 1.20.1 工程(Forge MDK 结构)
-- **可在单人游戏 RunClient 实际运行**的 mod
-- 附带可用的 **ProGuard 反混淆工具**(一旦拿到混淆版 jar 即可还原)
+- 免打包、免重启的脚本开发闭环(内置 Eclipse ECJ 编译器,不依赖系统 JDK)
+- 脚本以完整 Forge/原版类路径运行,可直接调用 Bukkit 式的 Minecraft/Forge API
+- 脚本事件系统(Forge 事件全量桥接 + 自定义总线)
+- 动态 Mixin / CoreMod 源码注入(见 §5,该能力在 1.0.0 中未接线)
+- 资源包/数据包注入(脚本目录旁的 `assets/`、`data/` 直接生效)
 
-### 1.2 最终状态
+### 1.2 运行环境与元数据
 
-| 项目 | 状态 | 说明 |
+| 项 | 值 |
+|---|---|
+| modId / 显示名 | `rainjava` / RainJava |
+| MC / Forge | 1.20.1 / 47.x(`loaderVersion="[47,)"`) |
+| Java | 17(编译脚本时 `-source 17 -target 17`) |
+| 许可 | MIT |
+| 入口类 | `net.rain.rainjava.RainJava`(`@Mod("rainjava")`) |
+| 命令 | `/java`、别名 `/j`(需要权限等级 2) |
+
+### 1.3 依赖构成
+
+| 依赖 | 形态 | 用途 |
 |---|---|---|
-| CFR 反编译 | 完成 | 69 个 class → 41 个 `.java` |
-| SRG→Mojmap 修复 | 完成 | 7 个文件 235 处替换,0 遗留 |
-| 编译 | 通过 | `gradlew build` 成功,含 `reobfJar` |
-| dev 客户端运行 | 通过 | 启动到主菜单,mod 正常初始化 |
-| 单人世界运行 | 通过 | 全自动 quickPlay 测试,命令/热重载全部验证 |
-| 生产 jar | 已产出(**未在正式客户端实测**) | `build/libs/rainjava-1.0.0.jar` |
-| 反混淆工具 | 完成并自验证 | 类名 100%、成员 100%(ProGuard 往返测试) |
-| 1.0.7 真实反混淆 | **无法执行** | 对应 jar 未公开,工具已就绪待用 |
-| Git 仓库 | 已建立 | 提交 `56d4c1d`、`d17b92e` |
+| Eclipse ECJ | 重定位为 `net.rain.repack.ecj.*`(外部库 RainAPI 提供) | 脚本内存编译 |
+| JavaParser | 重定位为 `net.rain.repack.javaparser.*` | MCP→SRG 源码转换 |
+| Mixin 分支 | 重定位为 `org.spongepowered.rain.asm.*`(新增动态 Mixin API) | 动态 Mixin 管线 |
+| Forge 原生 Mixin | `org.spongepowered.asm.*` | agent 补丁目标、少量工具类 |
+| `rainjava-core`(可选) | 独立 ModLauncher 服务 + 内嵌 Java agent | 替换原生 Mixin 的类加载逻辑,支持磁盘 Mixin |
 
-### 1.3 规模数据
-
-- 反编译产物:41 个源文件(含内部类合并)
-- 编译错误修复:23 个真实错误(反编译器产物类问题)
-- 运行时问题修复:2 个(服务名冲突、JPMS 模块可见性)
-- 最终 jar:`1,834,507` 字节(原版 `1,835,449`)
+设计特点:**自带编译器与映射表**(`assets/mappings/map/mappings.tsrg`,运行时实测约
+6,674 类 / 31,004 字段 / 54,309 方法),因此在正式环境中无需任何开发工具链即可编译用户脚本。
 
 ---
 
-## 2. 原始工件清单
+## 2. 总体架构
 
-| 工件 | 大小 | 说明 |
-|---|---:|---|
-| `G:\DOWNLOAD-EDGE\RainJava-main.zip` | 18,130,401 | 作者仓库(无源码):build.gradle、proguard/、libs/、mapping.txt |
-| `mapping.txt`(zip 内) | 75,611 | **1.0.7 的 ProGuard 映射表** |
-| `used-configuration.txt` | 2,765 | ProGuard `-printconfiguration` 输出,证明输入为 `rain_java-1.0.7.jar` |
-| `proguard/super-obfuscate.pro` | 4,474 | 激进混淆配置(见 §3.2) |
-| `libs/rainapi-1.0.0.jar` | 3,158,508 | RainAPI 旧版(未重定位 `org/eclipse`) |
-| `libs/rainjava-core-1.0.0.jar` | 178,502 | ModLauncher 服务 + 内嵌 agent(动态 Mixin 字节码提供器) |
-| `libs/mixin-0.8.5.jar` | 1,043,892 | **改名的 Mixin 分支**:包名 `org.spongepowered.rain.asm` |
-| `libs/org.eclipse.jdt.core_*.jar` | 6,924,526 | ECJ 编译器(未重定位) |
-| `libs/org.eclipse.equinox.common_*.jar` | 143,036 | ECJ 依赖 |
-| `G:\DOWNLOAD-EDGE\RainAPI-1.0.2.jar` | 7,562,333 | **可用版 RainAPI**:`net/rain/repack/{ecj,javaparser,javassist}` |
-| `H:\MinecraftMods\rain_java-1.0.0-all.jar` | 1,835,449 | Modrinth 公开发布版(**未混淆**) |
-| `MixinInfoInjector.class`(zip 内) | 2,344 | 注入到 `cpw.mods.modlauncher.MixinCore` 包的工具类 |
-| `base64.txt` / `injector_base64.txt` | 3,320 / 3,128 | 上述类的 base64 副本(MixinJS 上游版本) |
-
-### 2.1 混淆配置要点(super-obfuscate.pro)
+### 2.1 组件分层
 
 ```
--dontshrink                          # 不裁剪,只改名
--repackageclasses 'OoOo0Oo...O'      # 全部塞进单包
--obfuscationdictionary  ...          # 字典只含 O/o/0 字符(视觉混淆)
--overloadaggressively                # 允许仅返回类型不同的重载
--useuniqueclassmembernames
--adaptclassstrings                   # 字符串常量里的类名也改
--adaptresourcefilenames/contents     # 资源文件名/内容里的类名也改
--keepattributes SourceFile,LineNumberTable,*Annotation*
--optimizationpasses 10 / method/inlining/*
+┌────────────────────────────────────────────────────────────────────────┐
+│ 入口层        RainJava(@Mod) 静态初始化 / commonSetup / clientSetup    │
+│               onServerStarting / RainJava.EVENT_BUS(脚本总线实例)      │
+├────────────────────────────────────────────────────────────────────────┤
+│ 核心编排层    RainJavaCore:目录初始化、示例生成、按 ScriptType 装载、   │
+│               热重载(reload/loadScripts)、资源包注册(onAddPackFinders) │
+├────────────────────────────────────────────────────────────────────────┤
+│ 脚本引擎      JavaScriptLoader(发现/编排)                              │
+│               McpToSrgTransformer(源码名称转换)                        │
+│               JavaSourceCompiler(ECJ 内存编译 + classpath 构建)        │
+│               DynamicClassLoader(脚本类加载)                           │
+│               ClassReplacementManager(类替换,未接线)                   │
+├────────────────────────────────────────────────────────────────────────┤
+│ 脚本 API      RainEventBus / RainSubscribeEvent / RainEventSubscriber  │
+│               ForgeEventBridge(Forge 事件桥,6 + 191 个事件)            │
+│               MinecraftHelper(映射反射助手)                            │
+│               NetworkUtils(网络) / RegUtils(注册)                      │
+│               RainJavaResourcePack(assets/data 注入)                   │
+├────────────────────────────────────────────────────────────────────────┤
+│ 字节码层      DynamicMixinLoader / MixinManager / MixinJarBuilder      │
+│               BytecodeProviderWrapper / RainMixinConnector             │
+│               RefMapGenerator / MixinInfoInjector(磁盘兜底)            │
+│   (可选)      rainjava-core:ModLauncher 服务 + agent,补丁原生 Mixin    │
+├────────────────────────────────────────────────────────────────────────┤
+│ 支撑层        RainJavaLogger / ScriptErrorCollector / ScriptError      │
+│               RuntimeModuleOpener / ModuleAccessHelper / Unsafe...     │
+└────────────────────────────────────────────────────────────────────────┘
 ```
+
+### 2.2 启动时序
+
+| 时机 | 动作 |
+|---|---|
+| `RainJava` 类静态块(Forge 构造 mod 类时) | 创建 `RainJavaCore` → 立即执行 **STARTUP** 脚本(编译+`init()`) |
+| `RainJava` 构造器 | 注册 `commonSetup` / `clientSetup` 到 mod 事件总线;注册自身到 Forge 总线 |
+| `FMLCommonSetupEvent` | 空实现 |
+| `FMLClientSetupEvent` | 执行 **CLIENT** 脚本 |
+| `ServerStartingEvent` | 执行 **SERVER** 脚本 |
+| `AddPackFindersEvent` | 注册 `rainjava_assets` / `rainjava_data` 资源包 |
+
+要点:**STARTUP 脚本在类初始化阶段运行**,早于任何 Forge 生命周期事件;这意味着启动脚本
+可参与 mod 初始化早期的行为定制,但也意味着此时其它 mod 可能尚未加载完毕。
+
+### 2.3 运行时目录布局
+
+```
+<gameDir>/RainJava/
+├─ startup/    游戏初始化时执行一次
+├─ server/     每次开服/进世界时执行
+├─ client/     客户端初始化时执行
+├─ assets/     作为 rainjava_assets 资源包加载(实时读取)
+├─ data/       作为 rainjava_data 数据包加载(实时读取)
+├─ mixins/     (1.0.0 未接线)
+├─ coremod/    (1.0.0 未接线,目录不会创建)
+└─ README.txt  自动生成的目录说明
+```
+
+`RainJavaCore.initializeFolders()` 实际只创建 `startup/server/client/data/assets` 五个目录,
+`coremod` 字段存在但既不创建也不使用。`createExampleFiles()` 在首次运行时生成
+`startup/Example.java` 与 `README.txt`。
 
 ---
 
-## 3. 混淆状态判定(关键结论)
+## 3. 脚本执行引擎
 
-**公开的 jar 全部没有混淆,`mapping.txt` 对应的是未公开的 1.0.7 版本。**
+### 3.1 加载流程总览
 
-验证方式(枚举 zip 条目中的混淆特征 `OoOo0Oo0Oo0Oo0`):
+```
+Files.walk(脚本目录)
+   │  过滤:路径包含 mixins/ 或 replace/ 的文件跳过
+   ▼
+读取源码 → McpToSrgTransformer.transformSource()   ← MCP 名称 → SRG 名称
+   ▼
+extractClassName() 解析包名/类名
+   ▼
+JavaSourceCompiler.compileFromString()             ← ECJ 内存编译
+   ▼
+CompiledClass{className, bytecode}
+   ▼
+DynamicClassLoader.addCompiledClass() + loadClass()
+   ▼
+processRainEventSubscriber()  ← @RainEventSubscriber 自动注册总线
+   ▼
+executeClass()                ← 查找并调用入口方法
+```
 
-| jar | 混淆条目数 |
-|---|---:|
-| `rain_java-1.0.0-all.jar`(Modrinth) | 0 |
-| `RainAPI-1.0.2.jar` | 0 |
-| `libs/rainjava-core-1.0.0.jar` | 0 |
+### 3.2 源码发现与过滤
 
-证据链:
+`JavaScriptLoader.loadJavaScripts(Path)`:
 
-1. `used-configuration.txt` 显示 ProGuard 输入为 `.../build/libs/rain_java-1.0.7.jar`,输出 `rain_java-1.0.7-visual-obf.jar`(开发机 Termux 环境)。
-2. `mapping.txt` 含 50 个类映射(49 个 `net.rain.rainjava.*` + 1 个诱饵 `cpw.mods.modlauncher.MixinCore.MixinInfoInjector`),而 1.0.0 jar 有 69 个类,类集合与映射不一致(1.0.7 重构过包结构)。
-3. CurseForge 项目文件列表为空、Modrinth 只有 1.0.0 → 1.0.7 混淆 jar 无处可下。
+- 递归收集 `*.java`;
+- 过滤规则:`mixins/`、`replace/` 子路径下的文件不参与普通脚本加载(前者归 Mixin 管线,
+  后者归类替换管线);
+- 每个文件按"编译成功/失败"计数,输出 `Compiled x/y` 日志。
 
-**结论**:对 1.0.0 无需反混淆(直接 CFR 反编译);反混淆工具按 mapping.txt 格式开发并已完成自验证,拿到 1.0.7 jar 后可直接使用。
+### 3.3 MCP→SRG 源码转换
+
+生产环境的 Minecraft 运行时使用 SRG 名称(`m_xxxxx_`),而用户脚本写的是官方(MCP/Mojmap)
+名称。`McpToSrgTransformer` 用 JavaParser 解析脚本 AST,重写三类节点:
+
+- `MethodCallExpr`(方法调用)
+- `FieldAccessExpr`(字段访问)
+- `NameExpr`(简单名)
+
+名称解析委托给 `MinecraftHelper`,并沿继承链查找(`findSrgMethodInHierarchy` /
+`findSrgFieldInHierarchy`),只在 `TRANSFORM_PACKAGES` 白名单包内改写。
+转换失败时回退使用原始源码(仅告警)。
+
+### 3.4 内存编译(ECJ)
+
+`JavaSourceCompiler` 的编译策略:
+
+- **编译器**:强制实例化重定位的 `EclipseCompiler`;若失败则整条脚本管线停用(不抛异常)。
+- **编译参数**:`-source 17 -target 17 -encoding UTF-8 -warn:none -proceedOnError
+  -g:vars,lines,source -preserveAllLocals`,并注册 Mixin 注解处理器
+  (`MixinObfuscationProcessorInjection/Targets`,`-Amixin.env.remapRefMap=true`)。
+- **classpath 构建**(`buildClassPath()`,按顺序去重):
+  1. `java.class.path`
+  2. 线程上下文类加载器及其父链的 URL(`URLClassLoader.getURLs()` /
+     `BuiltinClassLoader.ucp` 反射)
+  3. `ModList.getMods()` 中每个 mod 的文件路径(多重探测:`getFilePath`/`getFile`/
+     `SecureJar.getPrimaryPath`/`toString` 解析)
+  4. 通过已知 MC 类(`Item`、`Block`、`ForgeRegistries`、`DeferredRegistration` 等)的
+     `ProtectionDomain`/`getResource` 反查 jar 路径
+  5. 游戏根目录、`mods/`、`libraries/` 目录扫描
+- **输入输出**:`InMemoryJavaFileObject`/`EclipseCompatibleJavaFileObject`(内存源码)与
+  `CustomFileManager`(把 class 写入 `ByteArrayOutputStream`),产物 `CompiledClass` 不落盘。
+- 编译错误解析 ECJ 的 `Line N:` 输出,写入 `ScriptErrorCollector`。
+
+### 3.5 类加载与执行
+
+- `DynamicClassLoader extends ClassLoader`,parent 为线程上下文类加载器;
+  `findClass` 命中内存字节码时 `defineClass`,否则委派父加载器。**parent-first** 语义:
+  父加载器能解析的同名类无法被脚本覆盖。
+- 入口方法发现顺序(`JavaScriptLoader.executeClass`):
+  1. `public static` 且无参:依次尝试 `init` → `initialize` → `onLoad` → `load` → `register`;
+  2. `public static` 且参数为 `FMLJavaModLoadingContext` 的同名方法(传入 `FMLJavaModLoadingContext.get()`);
+  3. 都没有时:非抽象/非接口类尝试无参构造实例化;否则仅记录日志。
+- 执行顺序取决于 `Files.walk` 的遍历顺序(**未排序**,不确定)。
+- `@RainEventSubscriber` 标注的脚本类在加载后自动 `RainJava.EVENT_BUS.register(clazz)`。
+
+### 3.6 热重载
+
+`/java reload [startup|server|client]` 调用链:
+
+```
+RainJavaCommands.reload()
+  ├─ ScriptErrorCollector.clear(type)
+  ├─ DistExecutor.unsafeRunWhenOn(CLIENT, RainJavaClientEvents::resetShownFlag)
+  └─ RainJavaCore.reload(type)
+       ├─ loadedFlags.put(type,false)
+       ├─ loaders.put(type, new JavaScriptLoader(type))   ← 整体替换
+       └─ doLoad(type)                                     ← 重新扫描/编译/执行
+```
+
+每次重载都会**重建整个加载器**:重新生成 ECJ 编译器、重新全量构建 classpath、新建
+`DynamicClassLoader`。语义上有两点需要知晓:
+
+- 旧的脚本类实例/静态状态被丢弃(可 GC),但**已注册到事件总线的监听器不会反注册**,
+  重载后同一脚本类会产生重复回调;
+- 旧 `DynamicClassLoader` 中的类不再可达,但若其它代码持有其引用(如注册表对象),
+  仍可能存活。
+
+### 3.7 类替换管线(设计存在,未接线)
+
+`ClassReplacementManager` 设计用于"用脚本重写现有类":
+
+- 工作目录 `RainJava/replace/`;
+- `processReplacements()`:扫描 → `JavaSourceCompiler.compile(Path)` → 编译产物写入
+  `<进程CWD>/.rainjava_replacements/<pkg>/<Cls>.class`;
+- 日志注明"下次游戏启动时应用"。
+
+**1.0.0 中该类没有任何实例化点**,且没有任何代码读取 `.rainjava_replacements`,
+因此该功能实际不可用;相关辅助 `PathUtils.removeRainJavaPrefix` 也仅被它引用。
 
 ---
 
-## 4. 逆向分析过程
+## 4. 脚本 API
 
-### 4.1 反编译
+### 4.1 事件总线(`net.rain.eventbus`)
 
-```
-java -jar cfr-0.152.jar rain_java-1.0.0-all.jar \
-     --outputdir decompiled/rain_java-1.0.0 --silent true
-```
+**注解**
 
-CFR 0.152 → 41 个 `.java`(69 个 class 中的内部类被合并进父类)。
-
-### 4.2 依赖分析(决定工程如何配依赖)
-
-| 依赖 | 提供方 | 用途 |
+| 注解 | 目标 | 属性 |
 |---|---|---|
-| `org.spongepowered.rain.asm.*`(19 处 import) | `libs/mixin-0.8.5.jar`(**分支**) | 动态 Mixin 管线,含专属 API:`MixinProcessorHolder`、`MixinConfig.createDynamic`、`DefaultMixinConfigPlugin.registerDynamicMixin` |
-| `net.rain.repack.ecj.*` | `RainAPI-1.0.2.jar` | 内置 Java 编译器(脚本编译) |
-| `net.rain.repack.javaparser.*` | `RainAPI-1.0.2.jar` | 脚本源码解析(MCP→SRG 转换) |
-| `org.spongepowered.asm.*`(仅 2 个文件) | Forge 自带 Mixin | `MixinInfoInjector`、`RainMixinConnector` |
-| `sun.misc.Unsafe` | JDK | 绕过模块系统定义类 |
-| `net.rain.api.*` | — | **代码实际没有引用**(仅 README 文案提及) |
-| `net.rain.eventbus.*` | 源码自带 | 脚本事件总线 |
+| `@RainSubscribeEvent` | 方法 | `priority`(默认 `NORMAL`)、`receiveCanceled`(默认 false) |
+| `@RainEventSubscriber` | 类 | `bus`(默认 FORGE;仅用于日志,不改变实际总线) |
 
-### 4.3 SRG → Mojmap 修复
+**注册**:脚本类标注 `@RainEventSubscriber` 后由 `JavaScriptLoader.processRainEventSubscriber()`
+自动调用 `RainEventBus.register(Class)`。要求监听方法为 **static、public、恰好 1 个参数**,
+否则告警跳过;`register` 以传入的 Class 作为 owner,重复注册跳过,支持 `unregister(Class)`。
 
-发布 jar 的字节码里保留了 89 个 SRG 成员名(`m_xxxxx_`/`f_xxxxx_`),在 official 映射的 dev 环境无法编译。用 mod 自带的映射资源 `assets/mappings/map/mappings.tsrg`(tsrg2 格式,64,225 条成员映射)编写 Python 脚本批量替换:
+**分发**:`RainEventBus.post(Object)` 沿事件类的**超类 + 接口 BFS** 收集全部类型,
+按优先级(HIGHEST→MONITOR)依次**同步反射调用** `method.invoke(null, event)`;
+单个监听器异常被捕获记录,不中断其它监听器。
 
-- 脚本:`RainJava-work/fix_srg.py`
-- 结果:**235 处替换 / 7 个文件 / 0 遗留**
+**取消语义**:仅当事件是 `net.minecraftforge.eventbus.api.Event` 时有效;
+被取消后,`receiveCanceled=false` 且非 MONITOR 的监听器被跳过。
 
-受影响文件:`RainJavaErrorScreen`、`RainJavaCommands`、`RainJavaClientEvents`、`RainJavaResourcePack`、`RegUtils`、`NetworkUtils`、`RainJavaCore`。
+**线程模型**:在调用线程同步执行——服务端 tick/命令/聊天在 Server thread,客户端 tick
+在 Client thread,`RenderTickEvent` 在 Render thread,加载类事件在 mod 加载线程。
+总线容器为 `ConcurrentHashMap` + `CopyOnWriteArrayList`,注册与分发的并发是安全的。
 
-### 4.4 损坏类重写(MixinInfoInjector)
+### 4.2 Forge 事件桥(`api.ForgeEventBridge`)
 
-CFR 对 `cpw.mods.modlauncher.MixinCore.MixinInfoInjector` 输出非法 Java(`GOTO`/类型混淆)。根据 `javap -p -c` 字节码手工重写,逻辑:
+通过 `@Mod.EventBusSubscriber(modid="rainjava")` 把 Forge 事件原样转发到
+`RainJava.EVENT_BUS.post(...)`:
 
-1. 先尝试 `provider.getClassNode(name, runTransformers)`;
-2. 失败则从 `<gamedir>/.rain_mixin/<name>.class` 读取磁盘 class,用 `MixinClassReader` 解析为 ASM `ClassNode`;
-3. IO 错误抛 `RuntimeException`。
-
-这是"从磁盘热加载 Mixin class"的钩子(配合 rainjava-core 的 agent 使用)。
-
-### 4.5 编译错误修复(23 处)
-
-由独立 subagent 迭代修复,全部为反编译器产物,不改变逻辑:
-
-| 类别 | 数量 | 典型修复 |
+| 总线 | 数量 | 代表事件 |
 |---|---:|---|
-| 原始类型(raw type) | 10 | 补全泛型局部变量,如 `ArrayList<Path>`、`DiagnosticCollector<JavaFileObject>` |
-| lambda 类型推断 | 3 | 显式泛型(如 `SimplePacket` → `T` 的返回)、合成方法重命名 |
-| 枚举 switch | 3 | `case ScriptType.SERVER:` → `case SERVER:` |
-| 访问者泛型 | 3 | `visit(X, Object)` → `visit(X, Void)`/`super.visit(n, arg)` |
-| 找不到符号 | 4 | 对照原始字节码重建(McpToSrgTransformer 等) |
-| 其它 | — | `RuntimeModuleOpener` 按原字节码异常表重建 try/catch;`MinecraftHelper` 恢复 try-with-resources;`RainJavaErrorScreen` 去掉非法强转 |
+| MOD | 6 | `FMLCommonSetupEvent`、`FMLClientSetupEvent`、`FMLDedicatedServerSetupEvent`、`InterModEnqueueEvent`、`InterModProcessEvent`、`FMLLoadCompleteEvent` |
+| FORGE | 191 | Tick 族(Server/Client/Level/Player/Render,START+END)、生命周期(ServerStarting/Started/Stopping、TagsUpdated、AddReloadListener、OnDatapackSync…)、玩家(登录/登出/交互/物品/经验/进度…)、实体与生物(伤害/死亡/掉落/生成/效果…)、方块与世界(破坏/放置/爆炸/区块/流体…)、注册与数据(RegisterCommands、RegisterStructureConversions、LootTableLoad…) |
 
----
-
-## 5. 工程重建(MDK)
-
-### 5.1 基础
-
-- Forge MDK `1.20.1-47.4.10`,official 映射,Gradle 8.8(Wrapper),Java 17(Temurin)
-- 源码放入 `src/main/java`,资源从原 jar 提取到 `src/main/resources`
-
-### 5.2 build.gradle 关键改动
-
-```groovy
-dependencies {
-    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-    compileOnly files('libs/rainapi-repack-1.0.2.jar')   // ECJ/JavaParser
-    compileOnly files('libs/mixin-0.8.5-dev.jar')        // 分支 Mixin
-}
-
-tasks.named('processResources', ProcessResources).configure {
-    ...
-    from zipTree('libs/rainapi-repack-1.0.2.jar')  // 影子打包(见 §6.2)
-    from zipTree('libs/mixin-0.8.5-dev.jar')
-}
-
-minecraft.runs.client {
-    if (project.hasProperty('quickPlay')) {
-        args '--quickPlaySingleplayer', project.property('quickPlay')  // 自动化测试入口
-    }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
-    options.fork = true
-    options.forkOptions.jvmArgs += ['-Duser.language=en','-Duser.country=US','-Dfile.encoding=UTF-8']
-    // ↑ 让 javac 输出英文错误(Windows 中文控制台会乱码)
-}
-```
-
-### 5.3 资源与元数据修正
-
-| 项 | 处理 |
-|---|---|
-| `mods.toml` | 依赖表键 `dependencies.rain_java` → `dependencies.rainjava`(与 modId 一致) |
-| `java.mixins.json` | **删除**(孤儿文件:MANIFEST 无 `MixinConfigs`,且 client 项引用不存在的 `MixinBootstrap`,refmap 也缺失) |
-| `META-INF/MANIFEST.MF`、`jarjar/metadata.json` | 从资源目录移除(构建时自动生成/无需) |
-| `assets/mappings/map/mappings.tsrg` | 保留(9.1MB,脚本编译器运行时依赖) |
-| `pack.mcmeta` | 保留(pack_format 15) |
-
-### 5.4 依赖瘦身脚本
-
-- `strip_rainapi.py`:从 `RainAPI-1.0.2.jar` 抽取 `net/rain/repack/**`(2,248 条)→ `rainapi-repack-1.0.2.jar`(5,755,492 字节)
-- `strip_mixin.py`:从分支 Mixin jar 移除 `META-INF/services/**` 与 MANIFEST → `mixin-0.8.5-dev.jar`(688 条,1,041,462 字节)
-
----
-
-## 6. 运行时问题与修复
-
-### 6.1 问题一:`Duplicate key mixin`(启动即崩)
-
-- 现象:`TransformationServicesHandler.discoverServices` 抛
-  `IllegalStateException: Duplicate key mixin`
-- 根因:分支 Mixin jar 的 `META-INF/services/cpw.mods.modlauncher.api.ITransformationService`
-  注册了第二个名为 `mixin` 的转换服务,与 Forge 自带冲突。
-- 修复:剥离该 jar 的全部 `META-INF/services/**`(见 §5.4)。
-
-### 6.2 问题二:`NoClassDefFoundError: net/rain/repack/ecj/...`
-
-- 现象:mod 构造时崩溃;普通 classpath 依赖(`implementation files(...)`)在 dev 环境不可见。
-- 根因:FML/ModLauncher 以 JPMS 模块层加载 mod;classpath 上的普通 jar 属于 unnamed module,
-  **named module 的 mod 默认读不到**(生产环境靠安装 RainAPI library mod 解决;dev 没有)。
-- 修复:把 repack 与分支 Mixin 的类通过 `processResources { from zipTree(...) }` **影子打包进 mod 自身**,
-  依赖改为 `compileOnly`。dev 与产物 jar 同时生效,且 mod 变为自包含。
-
-修复后客户端正常进入主菜单,日志确认 mod 初始化:
-`RainJava Core initialized at: ...run/RainJava`、`Mapped 6674 classes...`。
-
----
-
-## 7. 全自动测试方案
-
-### 7.1 设计(无人值守,自动进出游戏)
-
-```
-[1] gradlew runServer          → 生成 run/world(顺便验证服务端)
-[2] 复制 run/world → run/saves/autotest
-[3] gradlew runClient -PquickPlay=autotest
-        ↓ 自动进入单人世界,集成服务端启动
-[4] RainJava 加载 run/RainJava/server/*.java
-        → AutoTest.init() 启动守护线程
-        → 等服务器就绪 → 反射执行 3 条命令
-        → 写 run/rainjava-autotest-result.txt
-        → 反射调用 Minecraft.stop() 自动退出
-[5] 轮询结果文件与日志,检查退出码
-```
-
-### 7.2 自动测试脚本
-
-`run/RainJava/server/AutoTest.java`,关键设计:
-
-- **纯反射 + 仅 JDK 依赖**:dev 环境脚本编译器找不到 MC/Forge jar(见 §11.1),直接 import 会编译失败
-- 用 `FMLEnvironment.dist` 判断客户端(避免服务端误加载 `Minecraft` 类)
-- `ServerLifecycleHooks.getCurrentServer()` 取服务器
-- `Commands.performPrefixedCommand(createCommandSourceStack(), cmd)` 执行命令(控制台源,权限等级 4,无需开作弊)
-- 结果写文件 + `Minecraft.getInstance().execute(() -> ...stop())`
-
-### 7.3 实测结果
-
-结果文件 `run/rainjava-autotest-result.txt`:
-
-```
-phase=client
-server=found
-serverRunning=true
-cmd_java_errors=1
-cmd_java_reload_startup=1
-cmd_java_hand_getId=1
-SUCCESS=1
-```
-
-日志关键行:
-
-| 观察点 | 日志 |
-|---|---|
-| 映射加载 | `Loaded: 6674 classes, 31004 fields, 54309 methods from /assets/mappings/map/mappings.tsrg` |
-| 启动脚本编译 | `Successfully compiled: rainjava.startup.Example (602 bytes)` |
-| 热重载 | `RainJava: startup scripts reloaded successfully.` + 再次编译 Example |
-| hand 命令路径 | `Error: A player is required to run this command here`(控制台无玩家,符合预期) |
-| 干净退出 | `ThreadedAnvilChunkStorage (autotest): All chunks are saved` / `BUILD SUCCESSFUL in 1m 22s` |
-
----
-
-## 8. ProGuard 反混淆工具
-
-### 8.1 位置与用法
-
-```
-python H:\MinecraftMods\RainJava-work\deobf\proguard_deobf.py <混淆.jar> <mapping.txt> <输出.jar>
-```
-
-- 实现:纯 Python **原始常量池改写器**(jawa 对 46/69 个真实 Java 17 类无法往返,弃用)
-- 两遍解析 mapping:跳过 inline 伪条目(如 `...:64:69 -> <init>`),方法键 = (混淆类, 混淆名, **完整描述符**),以正确处理 `-overloadaggressively`(仅返回类型不同的重载,共 31 组)
-- 改名范围:类/父类/接口、字段/方法定义、描述符、泛型签名、注解、InnerClasses/EnclosingMethod/Record、invokedynamic(按接口/参数/绑定接收者解析)、类名字符串常量、资源文件名与 `.properties`/`.xml` 内容
-- 附加:从 mapping 的 `# {"fileName":...}` 注释恢复 SourceFile
-
-### 8.2 验证结果(ProGuard 7.3.2 往返)
-
-用仓库自带 ProGuard + `super-obfuscate.pro` 混淆 1.0.0 jar 后再用本工具还原:
-
-| 指标 | 结果 |
-|---|---|
-| 类条目路径 | **69/69(100%)** |
-| 成员标识(名+描述符,`javap -p -s`) | **1037/1037(100%)** |
-| 结构有效性 | 99.04%(仅 10 处 `-allowaccessmodification` 访问标志差异,mapping 不记录) |
-| 零残留混淆引用 | 是 |
-| 合成端到端(内部类/record/枚举/注解/资源) | 100%,反混淆 jar 运行输出与原版逐字节一致 |
-
-### 8.3 真实 mapping 测试
-
-用作者的 `mapping.txt`(1.0.7)套到 1.0.0 jar:运行无崩溃、0 命中(符合预期,版本不匹配)。**拿到 1.0.7 混淆 jar 后可直接还原**。
-
-### 8.4 已知限制
-
-- mapping 必须与目标 jar 同版本
-- `-allowaccessmodification` 造成的访问标志放宽、被 ProGuard 删除的 Signature 无法恢复
-- `-adaptclassstrings` 对"恰好等于成员名"的字符串同样改写,无法从 mapping 逆向区分
-
----
-
-## 9. 项目结构说明
-
-```
-RainJava-MDK/
-├─ build.gradle                  # MDK 配置 + 影子打包 + quickPlay 入口
-├─ gradle.properties             # Forge 47.4.10 / official 1.20.1 / mod 元数据
-├─ .gitignore
-├─ libs/
-│  ├─ rainapi-repack-1.0.2.jar   # ECJ + JavaParser(重定位,已影子打包)
-│  ├─ mixin-0.8.5-dev.jar        # 分支 Mixin(剥离服务注册,已影子打包)
-│  ├─ mixin-0.8.5.jar            # 原始分支(参考/重新生成用)
-│  ├─ rainapi-1.0.0.jar          # 旧版 RainAPI(未使用)
-│  └─ org.eclipse.*.jar          # 未重定位 ECJ(未使用)
-├─ src/main/
-│  ├─ java/
-│  │  ├─ net/rain/rainjava/      # 主包
-│  │  │  ├─ RainJava.java        # @Mod 入口
-│  │  │  ├─ core/                # RainJavaCore(目录/脚本编排)、ScriptType
-│  │  │  ├─ java/                # 脚本编译器、类加载器、脚本加载器、Mixin 管线
-│  │  │  ├─ mixin/               # MixinManager/DynamicMixinLoader/工具(1.0.0 未接线)
-│  │  │  ├─ command/             # /java /j 命令
-│  │  │  ├─ client/              # 客户端事件、错误界面
-│  │  │  ├─ api/                 # ForgeEventBridge(事件转发到脚本总线)
-│  │  │  ├─ resources/           # 资源包注入
-│  │  │  ├─ logging/             # 脚本日志/错误收集
-│  │  │  └─ utils/               # 路径工具
-│  │  ├─ net/rain/eventbus/      # 脚本事件总线
-│  │  └─ cpw/mods/modlauncher/MixinCore/MixinInfoInjector.java  # 磁盘 Mixin 钩子
-│  └─ resources/
-│     ├─ META-INF/mods.toml
-│     ├─ pack.mcmeta
-│     └─ assets/mappings/map/mappings.tsrg   # 9.1MB SRG/Mojmap 映射(运行时用)
-└─ TECHNICAL-REPORT.md           # 本文档
-```
-
-工作区(`H:\MinecraftMods\RainJava-work\`):
-
-| 路径 | 说明 |
-|---|---|
-| `RainJava-MDK/` | 工作工程(git 仓库) |
-| `deobf/` | 反混淆工具 + README + 验证报告 |
-| `decompiled/` | CFR 原始反编译输出 |
-| `jar-resources/` | 原 jar 资源提取 |
-| `mdk-src/` | Forge MDK 原始骨架 |
-| `fix_srg.py` / `strip_rainapi.py` / `strip_mixin.py` | 重建脚本 |
-| `parse_log.py` | 编译日志解析(编码容错) |
-| `tools/cfr-0.152.jar` | 反编译器 |
-| `source-audit.md` | 源码审计报告 |
-| `mapping-analysis-report.md` | 映射表分析报告 |
-| `collision-check.py` | 映射冲突检查 |
-
----
-
-## 10. 使用指南
-
-### 10.1 构建
-
-```
-cd H:\MinecraftMods\RainJava-work\RainJava-MDK
-.\gradlew.bat build
-```
-
-产物:`build\libs\rainjava-1.0.0.jar`(自包含,只需要 Forge 1.20.1;不必安装 RainAPI)。
-
-### 10.2 开发运行
-
-```
-.\gradlew.bat runClient                       # 普通启动
-.\gradlew.bat runClient -PquickPlay=autotest  # 自动进 autotest 存档
-.\gradlew.bat runServer --nogui               # 服务端
-```
-
-### 10.3 脚本系统(核心功能)
-
-脚本目录(dev 为 `run/RainJava/`,正式版为 `.minecraft/RainJava/`):
-
-```
-RainJava/
-├─ startup/   游戏初始化时执行一次
-├─ server/    每次开服/进世界时执行
-├─ client/    客户端初始化时执行
-├─ mixins/    (1.0.0 中未接线)
-└─ coremod/   (1.0.0 中未接线)
-```
-
-规则:
-
-- 任意 `.java` 文件,类中必须定义 `public static void init()`
-- 放入文件夹后自动编译(内置 ECJ,无需系统 JDK)并执行
-- 编译产物在内存中,不落地
-
-示例:
+脚本因此可以用同一套总线监听几乎全部 Forge 事件,例如:
 
 ```java
-package rainjava.server;
-
-public class MyScript {
-    public static void init() {
-        System.out.println("hello from script");
-    }
+@RainEventSubscriber
+public class MyEvents {
+    @RainSubscribeEvent
+    public static void onPlayerTick(TickEvent.PlayerTickEvent e) { ... }
 }
 ```
 
-命令(需要 OP / 权限等级 2):
+### 4.3 映射反射助手(`MinecraftHelper`)
 
-| 命令 | 作用 |
+用于在脚本中访问"映射表里存在但编译期不方便引用"的成员:
+
+- **数据源**:优先从 jar 内资源 `assets/mappings/map/mappings.tsrg`(TSRG2)加载,
+  多重路径+三级 ClassLoader 探测;失败时回退磁盘文件
+  (`config/forge/mappings.tsrg`、`mappings/mappings.tsrg`、Gradle 缓存)。
+- **解析结构**:类名映射、方法映射(简单键 + 带描述符键)、返回类型、字段映射。
+- **公开 API**:`getStaticField/setStaticField/getField/setField`、
+  `invokeStaticMethod/invokeMethod`(支持按类名+方法名的字符串形式)、
+  `getParameterTypes`、`clearCache`;查找顺序为官方名 → `ObfuscationReflectionHelper`
+  → SRG 名,并缓存 Field/Method。
+- **已知短板**:方法缓存键不含参数签名(重载会误命中);基本类型参数匹配脆弱;
+  `findFieldType()` 为永远返回 null 的桩;常量 `MAPPING_RESOURCE_PATH` 路径拼写与
+  实际资源路径不一致(实际加载走多路径探测所以可用)。
+
+### 4.4 网络封装(`NetworkUtils`)
+
+- `init(modid)` 创建 `SimpleChannel("modid:main")`,协议版本 `"1"`,双端版本校验。
+- `register(Class, Supplier)` 对同一消息类分别注册 `PLAY_TO_SERVER` / `PLAY_TO_CLIENT`
+  两个方向,处理体经 `consumerMainThread` 回主线程(`handleServer(player)` /
+  `handleClient()`)。
+- `PacketBuilder` 提供顺序写 `String/int/long/float/double/boolean/byte[]` 的 DSL,
+  生成 `QuickPacket`;分发 API:`sendToServer`、`sendToPlayer`、`sendToAllPlayers`、
+  `sendToNearby(radius)`、`sendToDimension`。
+
+**严重缺陷(该类实际不可用)**:静态块 `{ packetId=0; registerQuickPacket(); }` 在
+`CHANNEL` 赋值(仅在 `init()` 中)之前就调用注册 → 类初始化即抛
+`ExceptionInInitializerError`;后续引用得到 `NoClassDefFoundError`。此外:
+
+- `QuickPacket` 的 `serverHandler/clientHandler` 不参与序列化,接收端回调恒为 null;
+- mod 自身不会调用 `init()`,通道无人初始化;
+- 同一消息类在两个方向以不同 id 注册,而 Forge 1.20.1 的 `IndexedMessageCodec`
+  以 Class 为键索引,后注册方向会覆盖索引,存在编号错乱风险。
+
+### 4.5 注册封装(`RegUtils`)
+
+- `init(modId, modEventBus)` 为每个 modId 创建 `ModRegistries`,内含三个
+  `DeferredRegister`:`BLOCKS`、`ITEMS`、`ENTITY_TYPES`,并立即 `register(eventBus)`。
+- 便捷方法:`block`、`item`、`blockWithItem`、`stone()`(复制石头属性)、
+  `entity`(`EntityType.Builder`);`registerCustom` 支持 `Supplier`、实例、
+  `Class`(反射无参构造)、`Class + 参数`(按参数个数 + `isAssignable` 匹配构造器)。
+- 局限:自定义注册表创建后不保存引用;实体注册仅覆盖 `EntityType`;未做 id 合法性校验;
+  注册对象需脚本自行保存为静态字段,否则热重载可能重复注册。
+
+### 4.6 资源/数据包注入
+
+`RainJavaCore.onAddPackFinders` 把脚本旁的目录注册成资源包:
+
+| 目录 | Pack id | 类型 | 行为 |
+|---|---|---|---|
+| `RainJava/assets/` | `rainjava_assets` | `CLIENT_RESOURCES` | `Pack.Position.TOP`,required |
+| `RainJava/data/` | `rainjava_data` | `SERVER_DATA` | 同上 |
+
+`RainJavaResourcePack implements PackResources`:命名空间为一级子目录;
+`getResource` **实时从磁盘读取**,因此改完文件后 `F3+T` 重载资源即可生效,无需重启;
+`pack.mcmeta` 的 `pack_format=15`,描述为 "RainJava Dynamic Resources"。
+
+---
+
+## 5. Mixin / CoreMod 子系统
+
+> 该子系统在 1.0.0 中**设计完整但未接线**(见 §5.5),以下先描述设计链路。
+
+### 5.1 设计链路
+
+目标:用户把 Mixin 源码放入 `RainJava/mixins/`,游戏内完成"扫描→编译→注册→生效":
+
+```
+MixinManager.runFullWorkflow()
+ ├─ scanMixinSources()      扫描源码,生成 MixinInfo{sourceFile,className,targetClass,side}
+ ├─ needsRecompile()        与 compile_state.json 比对(文件数/mtime/size)
+ ├─ compileMixins()         内存编译,class 落盘 .rain_mixin/rainjava/mixins/
+ ├─ generateRefMap()        TSRG2 解析 @Shadow/@Inject/@Redirect 引用,生成 refmap
+ ├─ generateMixinConfig()   写 .rain_mixin/rainjava.mixins.json
+ ├─ saveCompileState()      写 compile_state.json
+ ├─ validateConfiguration() 校验配置/class/path/classpath
+ └─ showRestartMessage()    提示重启生效
+```
+
+运行期注册(另一条内存链路,`DynamicMixinLoader`):
+
+1. `MixinProcessorHolder.getInstance()` 取全局 Mixin 处理器;
+2. 用 `BytecodeProviderWrapper` 包装并**替换 Mixin 服务的字节码提供器**;
+3. `JavaSourceCompiler` 内存编译 `mixins/` 源码;
+4. 字节码登记进包装器缓存(双键 `a.b.C` / `a/b/C`);
+5. `MixinConfig.createDynamic("dynamic_rainjava_<uuid8>","rainjava.mixins",1000,false)`
+   创建动态配置;
+6. `DefaultMixinConfigPlugin.registerDynamicMixin(name)` 登记 Mixin 名;
+7. 注入 `extensions`、`service`、`plugin` 等 Mixin 内部字段;
+8. `config.registerDynamicMixin(name, bytes)` → `prepare()` → `postInitialise()`;
+9. 把配置挂进 `MixinProcessor.configs` 并重排序;
+10. 目标类加载时,Mixin 经 `IClassBytecodeProvider.getClassNode()` 命中包装器缓存,
+    完成注入。
+
+### 5.2 分支 Mixin 的扩展 API
+
+项目使用的 Mixin 被整体重定位为 `org.spongepowered.rain.asm`,并新增:
+
+| 扩展 | 作用 |
 |---|---|
-| `/java reload [startup\|server\|client]` | 热重载脚本(免重启) |
-| `/java errors [startup\|server\|client]` | 聊天栏查看错误/警告 |
-| `/java hand getId` | 显示手持物品注册 ID |
-| `/java hand getClass` | 显示手持物品类名 |
-| `/j ...` | `/java` 的别名 |
+| `MixinProcessorHolder` | 全局 `MixinProcessor` 实例持有者(`get/setInstance`) |
+| `MixinConfig.createDynamic(name,pkg,priority,required)` | 构造空动态配置 |
+| `MixinConfig.registerDynamicMixin(name, bytes)` | 反射定义类 → 解析 → 构造 `MixinInfo` → `parseTargets/validate` |
+| `DefaultMixinConfigPlugin.registerDynamicMixin(name)` | 静态注册表,`getMixins()` 返回 |
+| `MixinServiceModLauncher.forceInitializeBytecodeProvider()` | 预热字节码提供器 |
 
-### 10.4 远程执行与安全模型
+该 fork 与 mod 代码**硬耦合**(如 `DefaultMixinConfigPlugin` 直接引用
+`RainJava.LOGGER`),不能独立使用。
 
-**没有内置远程通道**:没有 Web 编辑器、没有远程控制台、没有网络上传 API(与作者描述的后续版本或 Coder 插件不同)。
+### 5.3 磁盘兜底与 agent 补丁
 
-但需要明确两点:
+`rainjava-core`(独立 jar)提供:
 
-1. **脚本零沙箱**:脚本以完整 JVM 权限运行,可以读写文件、`Runtime.exec`、开 socket。因此
-   "能写 `RainJava/` 目录 = 能在服务器进程里执行任意代码"。请严格限制该目录权限。
-2. **自定义远程执行可行**:脚本里可直接使用 `java.net` 起 HTTP/socket 服务,结合 mod 自带的
-   `JavaSourceCompiler`(编译)与 `DynamicClassLoader`(加载)实现 RCE 接口。属于用户自行实现的代码,
-   务必加鉴权与来源限制。
+- **ModLauncher 服务** `RainMixinTransformationService`(服务名 `rainmixin`),
+  在启动早期把自身从 ModLauncher 的发现列表/模块层中"摘除",避免暴露;
+- **自附加 Java agent**:从 `java.io.tmpdir` 释放内嵌 agent jar,通过
+  `VirtualMachine.attach(pid).loadAgent(...)` 注入;
+- **字节码补丁**(针对 Forge 原生 Mixin):
+  - 改写 `MixinInfo.loadMixinClass` 中的 `IClassBytecodeProvider.getClassNode(name,true)`
+    调用为 `MixinInfo.getMixinClassNode(provider,name,runTransformers,flags)`;
+  - 注入 `MixinInfoInjector.getMixinClassNode`:先走正常提供器,失败时从
+    `<gamedir>/.rain_mixin/<name>.class` 读取并解析为 `ClassNode`(磁盘兜底);
+  - 修 `MixinConfig.create` 的缺失资源异常路径。
 
-### 10.5 反混淆
+这套机制的目的是:在没有启动器参数配合的场景下,让 Mixin 能加载**磁盘上动态生成**的
+Mixin class。
 
-```
-python H:\MinecraftMods\RainJava-work\deobf\proguard_deobf.py <混淆.jar> <mapping.txt> <输出.jar>
-```
+### 5.4 Unsafe / 模块绕过
 
-当前 `mapping.txt` 对应 1.0.7;1.0.0 公开 jar 未混淆,不需要处理。
+| 组件 | 手段 | 用途 |
+|---|---|---|
+| `RuntimeModuleOpener` | `Module.implAddOpensToAllUnnamed/implAddExportsToAllUnnamed`,失败降级为 `Unsafe` 直接改 `Module.openPackages` | 打开 `java.base`、Mixin 包给无名模块 |
+| `ModuleAccessHelper` | `implAddOpens/implAddReads` | 模块读/开放修正(未接线) |
+| `UnsafeClassDefiner` | 试图用 `Unsafe` 绕过 `defineClass` 访问控制 | **坏死代码**(句柄从未赋值,调用即 NPE) |
+
+风险:直接修改 JDK 内部字段随版本失效;异常普遍降级为 debug 日志,故障静默。
+实测 dev 环境无 `--add-opens` 时,`RuntimeModuleOpener` 的模块打开全部失败(仅记录日志)。
+
+### 5.5 1.0.0 的接线状态
+
+全量引用检索结论:
+
+| 组件 | 引用数 | 状态 |
+|---|---:|---|
+| `DynamicMixinLoader` / `MixinManager` / `BytecodeProviderInstaller` | 0 | 从未实例化 |
+| `MixinJarBuilder` / `MixinDebugHelper` / `MixinDiagnosticTool` | 0 | 仅诊断工具,未调用 |
+| `MixinConfigHelper` / `UnsafeClassDefiner` / `ModuleAccessHelper` / `MixinUtils` | 0 | 死代码 |
+| `JavaScriptLoader.processMixins()` | 调用但**空实现** | STARTUP 路径空转 |
+| `java.mixins.json` | 无注册机制(MANIFEST 无 `MixinConfigs`) | 孤儿文件(且引用了不存在的 `MixinBootstrap`) |
+| `RainMixinConnector` | MANIFEST 无 `MixinConnector` 属性 | 永不被 Mixin 调用 |
+
+即:**1.0.0 的 `mixins/`、`coremod/` 热注入链路整体不可用**;脚本、事件、资源包等
+其余功能不受影响。
 
 ---
 
-## 11. 已知限制与后续工作
+## 6. 命令与权限
 
-### 11.1 dev 环境脚本编译器 classpath 不完整
+注册于 `RegisterCommandsEvent`,根命令 `/java` 与别名 `/j`,**统一要求权限等级 2**。
 
-日志:`[JavaSourceCompiler] Found 0 Minecraft/Forge core jars.`
-原因:编译器的类路径扫描针对正式版目录(`.minecraft/libraries` 等),dev 工程里不存在。
+| 命令 | 行为 |
+|---|---|
+| `/java reload [startup\|server\|client]` | 无参重载全部(顺序 SERVER→CLIENT→STARTUP);清空错误状态 → 重建加载器 → 统计结果 |
+| `/java errors [startup\|server\|client]` | 无参显示全部类型;输出错误/警告计数与前 5 条明细,附日志文件打开链接 |
+| `/java hand getId` | 手持物品注册名(青色、可点击复制);空手提示 |
+| `/java hand getClass` | 手持物品类名(金色、可复制);`ItemStack` 运行时类不同则追加一行 |
 
-- 影响:脚本直接 `import net.minecraft.*`/`net.minecraftforge.*` 会编译失败
-- 当前变通:用反射 + 字符串类名(我们的 `AutoTest` 即示例)
-- 建议修复:给 `JavaSourceCompiler.buildClassPath()` 追加 `System.getProperty("java.class.path")`
-  与 `jdk.module.path`,dev 下即可直接 import MC 类
+反馈格式:
 
-### 11.2 动态 Mixin / CoreMod 管线未接线(1.0.0 固有问题)
+- 开始:`▶ RainJava: Reloading <type> scripts...`(黄)
+- 成功:`✔ RainJava: <type> scripts reloaded successfully.`(绿)
+- 失败:`✘ RainJava: <type> reload finished with N error(s) and M warning(s).`(红,
+  附 `[Open Log]`/`[View Error Screen]` 点击控件)
+- 无问题:`✔ RainJava <type>: No errors or warnings.`(绿)
 
-源码中 `DynamicMixinLoader`/`MixinManager` 从未被实例化,`JavaScriptLoader.processMixins()` 为空,
-`java.mixins.json` 也没被任何机制注册。即 README 宣传的 `mixins/`、`coremod/` 热注入在 1.0.0 中不可用。
-1.0.7(有 mapping 的版本)疑似补齐了这部分,但无 jar 可验证。
-
-### 11.3 其它
-
-- 生产 jar 已通过 `reobfJar`,**尚未在正式(非 dev)客户端实测**
-- mod 生成的示例文件中文注释乱码(charset 未指定 UTF-8)
-- `NetworkUtils` 静态初始化顺序问题(`registerQuickPacket()` 早于 `init()`),首次使用会 `ExceptionInInitializerError`;1.0.0 启动路径未触发
-- 完整 RainAPI library mod 未被本 mod 使用(代码不引用 `net.rain.api`),故未集成
+已知命令缺陷:失败消息中的 `[View Error Screen]` 指向 `/rainjava_errors <type>`,
+该命令**从未注册**(全库仅注册 `/java`、`/j`),点击无效。
 
 ---
 
-## 12. 附录
+## 7. 日志与错误系统
 
-### 附录 A:关键命令速查
+### 7.1 日志(`RainJavaLogger`)
 
-```powershell
-# 构建
-.\gradlew.bat build
+- 每类脚本一份独立文件:`<gameDir>/logs/Java/{startup|server|client}.log`
+  (截断模式,自动 flush);
+- 格式:`[yyyy-MM-dd HH:mm:ss] [TYPE/LEVEL] message`,同时镜像到 Log4j(`RainJava`);
+- 编译输出单独成块(`=== Compiler Output ===`),ECJ 原始输出完整落盘;
+- 首次初始化依赖 `FMLPaths` 就绪,失败会复位标志以便重试。
 
-# dev 运行 + 自动测试
-.\gradlew.bat runClient -PquickPlay=autotest
+### 7.2 错误模型(`ScriptError` / `ScriptErrorCollector`)
 
-# 重新生成服务端世界并存档
-.\gradlew.bat runServer --nogui
-Copy-Item run\world run\saves\autotest -Recurse -Force
+- `ScriptError`:类型(ERROR/WARN)、脚本类型、消息、文件名、行号、时间戳、堆栈;
+- `ScriptErrorCollector`:按 `ScriptType` 分桶的 `CopyOnWriteArrayList`,提供
+  `addError/addWarning/addFromThrowable/clear` 与只读视图;
+- `/java errors` 与客户端错误屏均消费该收集器。
 
-# 反混淆
-python H:\MinecraftMods\RainJava-work\deobf\proguard_deobf.py obf.jar mapping.txt deobf.jar
+**注意**:编译期错误会进入收集器;但脚本 **`init()` 运行期异常只写日志、不进收集器**
+(`executeClass` 捕获后仅 `logger.error`),因此此类错误在 `/java errors` 中显示为 0。
 
-# 重新生成影子依赖(如需)
-python H:\MinecraftMods\RainJava-work\strip_rainapi.py
-python H:\MinecraftMods\RainJava-work\strip_mixin.py
+### 7.3 客户端错误界面(`RainJavaErrorScreen`)
+
+- **触发**:客户端 tick 检测到 STARTUP 错误且当前在主菜单时,自动弹出(每次运行一次);
+  进入世界后若有错误/警告,则发送聊天消息 `[RainJava] <type> scripts: N error(s)...`;
+- **内容**:列表展示序号、`文件名:行号`、时间、消息(最多 3 行);悬停显示堆栈
+  (Shift 展开全部);
+- **交互**:双击左键打开对应脚本文件;双击右键复制完整堆栈;按钮有
+  `Open Log File`、`Close`、(STARTUP 时为 `Quit Game`,且 ESC 不可关闭);
+- 右上角可在 `View Errors [n]` / `View Warnings [n]` 间切换。
+
+---
+
+## 8. 典型数据流
+
+### 8.1 一次脚本热重载(完整调用链)
+
+```
+玩家:/java reload server
+  → RainJavaCommands.reload(ctx, SERVER)
+      → ScriptErrorCollector.clear(SERVER)
+      → RainJavaCore.reload(SERVER)
+          → loaders.put(SERVER, new JavaScriptLoader(SERVER))
+              → RuntimeModuleOpener.openMixinModules()
+              → new EclipseCompiler()            // 重定位 ECJ
+              → new JavaSourceCompiler(compiler)
+              → new DynamicClassLoader(TCCL)
+              → new McpToSrgTransformer()
+          → doLoad(SERVER)
+              → loader.loadJavaScripts(RainJava/server)
+                  → Files.walk → McpToSrg 转换 → ECJ 内存编译
+                  → DynamicClassLoader 定义并加载类
+              → processLoadedClasses()
+                  → @RainEventSubscriber 注册
+                  → executeClass() → init() 调用
+      → 统计错误/警告 → 聊天栏反馈(✔/✘)
 ```
 
-### 附录 B:关键验证记录
+### 8.2 一次事件派发(以玩家 tick 为例)
+
+```
+Forge Server thread 触发 TickEvent.PlayerTickEvent
+  → ForgeEventBridge.ForgeBusHandler.onPlayerTick(e)
+      → RainJava.EVENT_BUS.post(e)
+          → BFS 收集 e 的超类/接口类型
+          → 按 priority 升序查找监听器
+          → 反射调用脚本方法 onPlayerTick(e)
+```
+
+### 8.3 资源热更新
+
+```
+玩家修改 RainJava/assets/<ns>/textures/foo.png
+  → 游戏内 F3+T(重载资源)
+      → RainJavaResourcePack.getResource() 实时读盘
+          → 新资源生效(无需重启,无需重载脚本)
+```
+
+---
+
+## 9. 技术评估
+
+### 9.1 设计亮点
+
+1. **完整的脚本闭环**:内存编译(ECJ)+ 内存类加载 + 自动入口方法 + 独立日志 +
+   错误界面 + 可点击反馈,形成了接近"游戏内 IDE"的体验。
+2. **映射感知的脚本兼容层**:`McpToSrgTransformer` + `MinecraftHelper` + 随包
+   `mappings.tsrg`,让用户在生产环境直接使用官方名称写脚本,是很务实的设计。
+3. **事件桥覆盖面广**:MOD 6 + FORGE 191 个事件的转发,加上注解式自动注册,
+   脚本能介入几乎全部游戏逻辑。
+4. **动态 Mixin 方案有技术深度**:fork 暴露 `MixinProcessorHolder` /
+   `createDynamic` / `registerDynamicMixin`,再配合 agent 改写原生 Mixin 的
+   类加载路径,给出了一条"无启动器参数也能动态注入 Mixin"的可行路线。
+5. **资源/数据包直读**:`PackResources` 实时读盘,改完即生效,免打包。
+
+### 9.2 缺陷与风险清单(1.0.0 实测/代码确认)
+
+| 级别 | 问题 | 影响 |
+|---|---|---|
+| 高 | `NetworkUtils` 静态初始化顺序错误 | 整个网络封装不可用,报错隐晦 |
+| 高 | Mixin/CoreMod 管线未接线(§5.5) | 宣传的核心能力缺失 |
+| 高 | 脚本 `init()` 运行期异常不进错误收集器 | `/java errors` 显示 0,误导 |
+| 中 | 热重载不反注册事件监听器 | 重载后回调重复执行 |
+| 中 | 命令链接指向未注册的 `/rainjava_errors` | 客户端/聊天反馈点击无效 |
+| 中 | `MinecraftHelper` 方法缓存忽略参数签名、基本类型匹配脆弱 | 重载方法可能静默调错 |
+| 中 | Mixin 管线路径/命名约定不一致(`rainjava.mixins` 包名、扁平 class 落盘、两套入口命名) | 即使接线也难互通 |
+| 中 | `UnsafeClassDefiner` 坏死代码;`ModuleAccessHelper` 未接线 | 功能缺失/误导 |
+| 低 | 脚本执行顺序依赖 `Files.walk`(未排序) | 初始化顺序不确定 |
+| 低 | `RegUtils` 自定义注册表不保存引用、id 未校验 | 易用性/健壮性 |
+| 低 | `ClassReplacementManager` 与 `.rainjava_replacements` 无消费者 | 死功能 |
+
+### 9.3 安全模型
+
+- **信任边界 = 文件写入权限**:`RainJava/` 目录的写入者等价于在游戏进程内执行任意代码
+  (脚本零沙箱,可反射、可发网络包、可改字节码);
+- `/java` 命令要求 OP 2,但命令只是操作入口,不构成安全边界;
+- 防御性设计仅有:总线逐监听器 try/catch、错误收集/展示、日志分级;
+  没有脚本签名、哈希校验、沙箱或审计;
+- **结论**:适用于单人/整合包/调试场景,不适合多租户或不受信脚本环境。
+
+---
+
+## 10. 附录
+
+### 附录 A:类清单(按包)
+
+| 包 | 类 |
+|---|---|
+| `net.rain.rainjava` | `RainJava`(入口) |
+| `.core` | `RainJavaCore`、`ScriptType` |
+| `.java` | `JavaScriptLoader`、`JavaSourceCompiler`(+4 内部类)、`DynamicClassLoader`、`McpToSrgTransformer`、`CompiledClass`、`ClassReplacementManager`、`MixinUtils` |
+| `.java.helper` | `BytecodeProviderInstaller`、`BytecodeProviderWrapper`、`MixinServiceHelper`、`MixinConfigHelper`、`ModuleAccessHelper`、`RuntimeModuleOpener`、`UnsafeClassDefiner` |
+| `.java.util` | `NetworkUtils`(+4 内部类)、`RegUtils` |
+| `.java.utils` | `MinecraftHelper`、`MC` |
+| `.mixin` | `MixinManager`(+4 内部类)、`DynamicMixinLoader`、`MixinJarBuilder`、`MixinDebugHelper`、`MixinDiagnosticTool`、`RainMixinConnector` |
+| `.mixin.refmap` | `RefMapGenerator` |
+| `.api` | `ForgeEventBridge` |
+| `.command` | `RainJavaCommands` |
+| `.client` | `RainJavaClientEvents`、`RainJavaErrorScreen` |
+| `.resources` | `RainJavaResourcePack` |
+| `.logging` | `RainJavaLogger`、`ScriptError`、`ScriptErrorCollector` |
+| `.utils` | `PathUtils` |
+| `net.rain.eventbus` | `RainSubscribeEvent`、`RainEventSubscriber`、`bus.RainEventBus` |
+| `cpw.mods.modlauncher.MixinCore` | `MixinInfoInjector`(磁盘 Mixin 兜底) |
+
+### 附录 B:文件/路径约定
+
+| 路径 | 用途 |
+|---|---|
+| `RainJava/{startup,server,client}` | 脚本目录 |
+| `RainJava/{assets,data}` | 资源/数据包(实时读取) |
+| `RainJava/README.txt` | 自动生成的说明 |
+| `logs/Java/{startup,server,client}.log` | 分类日志 |
+| `.rain_mixin/` | 动态 Mixin 运行目录(配置/refmap/编译状态/class 兜底) |
+| `.rain_mixin/rainjava.mixins.json` | 动态 Mixin 配置(1.0.0 未生成) |
+| `.rain_mixin/rainjava.refmap.json` | refmap(1.0.0 未生成) |
+| `.rain_mixin/compile_state.json` | 增量编译状态(1.0.0 未生成) |
+| `.rainjava_replacements/` | 类替换输出(未接线) |
+
+### 附录 C:关键实测数据(dev 环境)
 
 | 项 | 数据 |
 |---|---|
-| 原始发布 jar | 1,835,449 B / 103 条目 / 69 class |
-| 重建 jar | 1,834,507 B(dev build 产物) |
-| 映射表(SRG/Mojmap tsrg2) | 64,225 成员条目 |
-| 1.0.7 ProGuard 映射 | 50 类 / 443 真实方法 / 141 字段 / 132 内联条目 |
-| 反向映射冲突 | 真实成员 0 冲突(完整描述符键) |
-| 反混淆往返 | 类 69/69、成员 1037/1037、结构 99.04% |
-| 自动化测试 | `SUCCESS=1`,3/3 命令返回 1,客户端自动退出 |
-
-### 附录 C:Git 历史
-
-```
-d17b92e Remove CFR decompile summary artifact from source tree
-56d4c1d Initial commit: RainJava 1.0.0 reconstructed for Forge 1.20.1
-```
+| 映射表加载 | 6,674 类 / 31,004 字段 / 54,309 方法(简单名)/ 57,813 方法(带描述符) |
+| 示例脚本编译 | `rainjava.startup.Example` → 602 字节 class |
+| 启动脚本执行 | 静态块阶段完成,早于 `FMLCommonSetupEvent` |
+| 客户端脚本 | ClientSetup 阶段加载 |
+| 服务端脚本 | `ServerStartingEvent` 阶段加载 |
+| 资源包 | `rainjava_assets` / `rainjava_data` 注册成功,`pack_format=15` |
