@@ -1,14 +1,23 @@
 # RosettaRemoteDebugBridge 技术报告
 
-> 分析对象:**RosettaRemoteDebugBridge 1.0.0**(Forge 1.20.1 / Minecraft 1.20.1 / Java 17)
+> 项目:**RosettaRemoteDebugBridge 1.0.0**(Forge 1.20.1 / Minecraft 1.20.1 / Java 17)
 > 上游来源:作者原始项目 RainJava 1.0.0(反编译还原后重构、重命名)
-> 依据:项目源码、依赖 jar 的字节码级分析、无人值守运行时实测
-> 报告定位:描述该 mod 的**系统设计、内部实现、脚本 API 与技术评估**
+> 依据:当前工程源码、依赖 jar 字节码级分析、无人值守运行实测
+> 报告定位:描述该 mod 的**系统设计、内部实现、脚本 API、工程质量与技术评估**
 
-**命名迁移说明**:本项目已整体重命名为 RosettaRemoteDebugBridge,命名空间
-`net.rain.*` → `com.rosetta.remotedebugbridge.*`,类前缀 `Rain*` → `Rosetta*`,
-modId `rainjava` → `rosetta_remote_debug_bridge`,运行时目录 `RainJava/` →
-`RosettaRemoteDebugBridge/`。报告正文中出现的 "RainJava" 均指上游原始版本。
+**命名迁移说明**:本工程已整体重命名为 RosettaRemoteDebugBridge:
+
+| 项目 | 迁移前(上游) | 迁移后(当前) |
+|---|---|---|
+| 命名空间 | `net.rain.rainjava.*` / `net.rain.eventbus.*` | `com.rosetta.remotedebugbridge.*`(见附录 A) |
+| 类前缀 | `RainJava*` / `Rain*` | `Rosetta*` |
+| modId / 显示名 | `rainjava` / RainJava | `rosetta_remote_debug_bridge` / RosettaRemoteDebugBridge |
+| 运行时目录 | `RainJava/` | `RosettaRemoteDebugBridge/` |
+| 资源包/数据包 id | `rainjava_assets` / `rainjava_data` | `rosetta_assets` / `rosetta_data` |
+| 日志目录 | `logs/Java/` | `logs/Rosetta/` |
+
+外部依赖命名空间保持原样(不迁移):`net.rain.repack.*`(RainAPI 重定位的 ECJ/JavaParser)、
+`org.spongepowered.rain.asm.*`(改造版 Mixin 分支)、`cpw.mods.modlauncher.MixinCore`(agent 注入点)。
 
 ---
 
@@ -22,7 +31,7 @@ modId `rainjava` → `rosetta_remote_debug_bridge`,运行时目录 `RainJava/` �
 6. [命令与权限](#6-命令与权限)
 7. [日志与错误系统](#7-日志与错误系统)
 8. [典型数据流](#8-典型数据流)
-9. [技术评估](#9-技术评估)
+9. [工程质量与验证](#9-工程质量与验证)
 10. [附录](#10-附录)
 
 ---
@@ -31,39 +40,49 @@ modId `rainjava` → `rosetta_remote_debug_bridge`,运行时目录 `RainJava/` �
 
 ### 1.1 定位
 
-RainJava 是一个**运行期 Java 脚本引擎 mod**:用户把普通 `.java` 源码放入游戏目录的
-`RainJava/` 文件夹,mod 在启动、开服、客户端初始化等时机**在内存中编译并执行**这些脚本,
-并提供 `/java` 命令族进行热重载与错误查看。其宣传的核心能力包括:
+RosettaRemoteDebugBridge 是一个**运行期 Java 脚本与调试桥 mod**:
 
-- 免打包、免重启的脚本开发闭环(内置 Eclipse ECJ 编译器,不依赖系统 JDK)
-- 脚本以完整 Forge/原版类路径运行,可直接调用 Bukkit 式的 Minecraft/Forge API
-- 脚本事件系统(Forge 事件全量桥接 + 自定义总线)
-- 动态 Mixin / CoreMod 源码注入(见 §5,该能力在 1.0.0 中未接线)
-- 资源包/数据包注入(脚本目录旁的 `assets/`、`data/` 直接生效)
+- 用户把普通 `.java` 源码放入游戏目录的 `RosettaRemoteDebugBridge/` 文件夹;
+- mod 在启动 / 开服 / 客户端初始化时**在内存中编译并执行**这些脚本;
+- 内置 Eclipse ECJ(由 RainAPI 重定位提供),**无需系统 JDK** 即可编译;
+- 提供 `/java` 命令族进行热重载与错误查看;
+- 附带脚本事件总线、Forge 事件桥、映射感知反射助手、网络与注册封装、资源/数据包注入;
+- 预留动态 Mixin / CoreMod 管线(依赖外部 agent,当前环境自动降级,见 §5)。
 
 ### 1.2 运行环境与元数据
 
 | 项 | 值 |
 |---|---|
-| modId / 显示名 | `rainjava` / RainJava |
+| modId / 显示名 | `rosetta_remote_debug_bridge` / RosettaRemoteDebugBridge |
 | MC / Forge | 1.20.1 / 47.x(`loaderVersion="[47,)"`) |
-| Java | 17(编译脚本时 `-source 17 -target 17`) |
-| 许可 | MIT |
-| 入口类 | `net.rain.rainjava.RainJava`(`@Mod("rainjava")`) |
-| 命令 | `/java`、别名 `/j`(需要权限等级 2) |
+| Java | 17(脚本按 `-source 17 -target 17` 编译) |
+| 许可 | MIT(作者字段保留 `Rain`) |
+| 入口类 | `com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge`(`@Mod`) |
+| 构建 | ForgeGradle 6 / Gradle 8.8 / official 映射 |
+| 产物 | `build/libs/rosetta_remote_debug_bridge-1.0.0.jar`(8,686,329 字节,自包含) |
 
 ### 1.3 依赖构成
 
-| 依赖 | 形态 | 用途 |
+| 依赖 | 提供方 | 用途 |
 |---|---|---|
-| Eclipse ECJ | 重定位为 `net.rain.repack.ecj.*`(外部库 RainAPI 提供) | 脚本内存编译 |
-| JavaParser | 重定位为 `net.rain.repack.javaparser.*` | MCP→SRG 源码转换 |
-| Mixin 分支 | 重定位为 `org.spongepowered.rain.asm.*`(新增动态 Mixin API) | 动态 Mixin 管线 |
-| Forge 原生 Mixin | `org.spongepowered.asm.*` | agent 补丁目标、少量工具类 |
-| `rainjava-core`(可选) | 独立 ModLauncher 服务 + 内嵌 Java agent | 替换原生 Mixin 的类加载逻辑,支持磁盘 Mixin |
+| Eclipse ECJ | `libs/rainapi-repack-1.0.2.jar`(`net.rain.repack.ecj.*`) | 脚本内存编译 |
+| JavaParser | 同上(`net.rain.repack.javaparser.*`) | MCP→SRG 源码转换 |
+| Mixin 分支 | `libs/mixin-0.8.5-dev.jar`(`org.spongepowered.rain.asm.*`) | 动态 Mixin 管线(扩展 API) |
+| Forge 自带 Mixin | `org.spongepowered.asm.*` | agent 补丁目标、少量工具类与注解处理器 |
+| `rainjava-core`(可选) | 外部 jar(ModLauncher 服务 + 内置 agent) | 磁盘 Mixin 兜底(当前未集成) |
+| 映射表 | 随包资源 `assets/mappings/map/mappings.tsrg` | 运行时实测约 6,674 类 / 54,309 方法 |
 
-设计特点:**自带编译器与映射表**(`assets/mappings/map/mappings.tsrg`,运行时实测约
-6,674 类 / 31,004 字段 / 54,309 方法),因此在正式环境中无需任何开发工具链即可编译用户脚本。
+**打包策略**:ECJ/JavaParser 与 Mixin 分支通过 `processResources { from zipTree(...) }`
+**影子打包进 mod 自身**(依赖声明为 `compileOnly`),因此 dev 运行与发布 jar 均自包含,
+且规避了 JPMS 下“classpath 普通 jar 属于 unnamed module、mod 读不到”的问题。
+
+### 1.4 工程位置
+
+| 路径 | 说明 |
+|---|---|
+| `H:\MinecraftMods\RainJava-work\RosettaRemoteDebugBridge\` | 工程根(git 仓库) |
+| `autotest/server/*.java` | 可复现的无人值守测试脚本(见 §9.1) |
+| `run/` | 开发运行目录(游戏目录,不受版本控制) |
 
 ---
 
@@ -72,66 +91,68 @@ RainJava 是一个**运行期 Java 脚本引擎 mod**:用户把普通 `.java` �
 ### 2.1 组件分层
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│ 入口层        RainJava(@Mod) 静态初始化 / commonSetup / clientSetup    │
-│               onServerStarting / RainJava.EVENT_BUS(脚本总线实例)      │
-├────────────────────────────────────────────────────────────────────────┤
-│ 核心编排层    RainJavaCore:目录初始化、示例生成、按 ScriptType 装载、   │
-│               热重载(reload/loadScripts)、资源包注册(onAddPackFinders) │
-├────────────────────────────────────────────────────────────────────────┤
-│ 脚本引擎      JavaScriptLoader(发现/编排)                              │
-│               McpToSrgTransformer(源码名称转换)                        │
-│               JavaSourceCompiler(ECJ 内存编译 + classpath 构建)        │
-│               DynamicClassLoader(脚本类加载)                           │
-│               ClassReplacementManager(类替换,未接线)                   │
-├────────────────────────────────────────────────────────────────────────┤
-│ 脚本 API      RainEventBus / RainSubscribeEvent / RainEventSubscriber  │
-│               ForgeEventBridge(Forge 事件桥,6 + 191 个事件)            │
-│               MinecraftHelper(映射反射助手)                            │
-│               NetworkUtils(网络) / RegUtils(注册)                      │
-│               RainJavaResourcePack(assets/data 注入)                   │
-├────────────────────────────────────────────────────────────────────────┤
-│ 字节码层      DynamicMixinLoader / MixinManager / MixinJarBuilder      │
-│               BytecodeProviderWrapper / RainMixinConnector             │
-│               RefMapGenerator / MixinInfoInjector(磁盘兜底)            │
-│   (可选)      rainjava-core:ModLauncher 服务 + agent,补丁原生 Mixin    │
-├────────────────────────────────────────────────────────────────────────┤
-│ 支撑层        RainJavaLogger / ScriptErrorCollector / ScriptError      │
-│               RuntimeModuleOpener / ModuleAccessHelper / Unsafe...     │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 入口层   RosettaRemoteDebugBridge(@Mod)                                    │
+│          静态初始化 / commonSetup / clientSetup / onServerStarting         │
+│          EVENT_BUS(RosettaEventBus 实例,脚本事件总线)                      │
+├────────────────────────────────────────────────────────────────────────────┤
+│ 核心编排 RosettaCore:目录初始化、示例生成、按 ScriptType 装载、热重载、     │
+│          资源/数据包注册、网络通道自动初始化                               │
+├────────────────────────────────────────────────────────────────────────────┤
+│ 脚本引擎 JavaScriptLoader(发现/编排/执行)                                 │
+│          McpToSrgTransformer(运行时命名探测后的源码名称转换)               │
+│          JavaSourceCompiler(ECJ 内存编译 + FileManager 修正 + classpath)   │
+│          DynamicClassLoader(多 class 注册与脚本类加载)                     │
+│          CompiledClass{className, bytecode, allClasses}                    │
+│          ClassReplacementManager(类替换:仅编译,运行期需 agent)            │
+├────────────────────────────────────────────────────────────────────────────┤
+│ 脚本 API RosettaEventBus / RosettaSubscribeEvent / RosettaEventSubscriber  │
+│          ForgeEventBridge(Forge 事件桥,MOD 6 + FORGE 191)                 │
+│          MinecraftHelper(映射反射助手 + SRG/官方命名探测)                  │
+│          NetworkUtils(重写:自动初始化/单次注册/命名频道 QuickPacket)       │
+│          RegUtils(注册封装,自定义注册表保存与校验)                         │
+│          RosettaResourcePack(assets/data 注入)                             │
+├────────────────────────────────────────────────────────────────────────────┤
+│ 字节码层 DynamicMixinLoader / MixinManager / MixinJarBuilder               │
+│          BytecodeProviderWrapper / RosettaMixinConnector                   │
+│          RefMapGenerator / MixinInfoInjector(磁盘兜底)                     │
+│  (可选)  rainjava-core:ModLauncher 服务 + agent(补丁原生 Mixin)           │
+├────────────────────────────────────────────────────────────────────────────┤
+│ 支撑层   RosettaLogger / ScriptErrorCollector / ScriptError(UTF-8 日志)    │
+│          RuntimeModuleOpener / ModuleAccessHelper / UnsafeClassDefiner     │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 2.2 启动时序
 
 | 时机 | 动作 |
 |---|---|
-| `RainJava` 类静态块(Forge 构造 mod 类时) | 创建 `RainJavaCore` → 立即执行 **STARTUP** 脚本(编译+`init()`) |
-| `RainJava` 构造器 | 注册 `commonSetup` / `clientSetup` 到 mod 事件总线;注册自身到 Forge 总线 |
+| `RosettaRemoteDebugBridge` 类静态块 | 创建 `RosettaCore` → 立即执行 **STARTUP** 脚本;构造期自动初始化网络通道 |
+| 构造器 | 注册 `commonSetup` / `clientSetup` 到 mod 总线;注册自身到 Forge 总线 |
 | `FMLCommonSetupEvent` | 空实现 |
 | `FMLClientSetupEvent` | 执行 **CLIENT** 脚本 |
 | `ServerStartingEvent` | 执行 **SERVER** 脚本 |
-| `AddPackFindersEvent` | 注册 `rainjava_assets` / `rainjava_data` 资源包 |
+| `AddPackFindersEvent` | 注册 `rosetta_assets` / `rosetta_data` 资源包 |
 
-要点:**STARTUP 脚本在类初始化阶段运行**,早于任何 Forge 生命周期事件;这意味着启动脚本
-可参与 mod 初始化早期的行为定制,但也意味着此时其它 mod 可能尚未加载完毕。
+要点:STARTUP 脚本在**类初始化阶段**执行(早于任何 Forge 生命周期事件),
+可用于早期行为定制;此时其它 mod 可能尚未加载完毕,相关异常只进入日志与错误收集器。
 
 ### 2.3 运行时目录布局
 
 ```
-<gameDir>/RainJava/
+<gameDir>/RosettaRemoteDebugBridge/
 ├─ startup/    游戏初始化时执行一次
 ├─ server/     每次开服/进世界时执行
 ├─ client/     客户端初始化时执行
-├─ assets/     作为 rainjava_assets 资源包加载(实时读取)
-├─ data/       作为 rainjava_data 数据包加载(实时读取)
-├─ mixins/     (1.0.0 未接线)
-├─ coremod/    (1.0.0 未接线,目录不会创建)
-└─ README.txt  自动生成的目录说明
+├─ assets/     作为 rosetta_assets 资源包实时加载
+├─ data/       作为 rosetta_data 数据包实时加载
+├─ mixins/     (动态 Mixin 管线保留目录;当前环境自动降级)
+├─ coremod/    (字段保留;1.0.0 上游未接线)
+└─ README.txt  自动生成的说明(UTF-8)
 ```
 
-`RainJavaCore.initializeFolders()` 实际只创建 `startup/server/client/data/assets` 五个目录,
-`coremod` 字段存在但既不创建也不使用。`createExampleFiles()` 在首次运行时生成
-`startup/Example.java` 与 `README.txt`。
+`RosettaCore.initializeFolders()` 创建 `startup/server/client/assets/data`;
+`createExampleFiles()` 首次运行生成 `startup/Example.java`(包名 `rosetta.startup`)与 `README.txt`。
 
 ---
 
@@ -141,21 +162,26 @@ RainJava 是一个**运行期 Java 脚本引擎 mod**:用户把普通 `.java` �
 
 ```
 Files.walk(脚本目录)
-   │  过滤:路径包含 mixins/ 或 replace/ 的文件跳过
+   │  过滤:路径包含 mixins/ 或 replace/ 的跳过
+   │  排序:按绝对路径排序(确定性)
    ▼
-读取源码 → McpToSrgTransformer.transformSource()   ← MCP 名称 → SRG 名称
+读取源码(UTF-8)
+   ▼
+运行时命名探测:MinecraftHelper.isSrgRuntime()
+   │   官方映射(dev)  → 跳过转换
+   │   SRG 命名(生产) → McpToSrgTransformer 转换 MCP 名称
    ▼
 extractClassName() 解析包名/类名
    ▼
-JavaSourceCompiler.compileFromString()             ← ECJ 内存编译
+JavaSourceCompiler.compileFromString()       ← ECJ 纯内存编译
    ▼
-CompiledClass{className, bytecode}
+CompiledClass{className, bytecode, allClasses}
    ▼
-DynamicClassLoader.addCompiledClass() + loadClass()
+DynamicClassLoader 注册全部 class(按字节码真实二进制名,含 $ 内部类)
    ▼
-processRainEventSubscriber()  ← @RainEventSubscriber 自动注册总线
+processRainEventSubscriber()  ← @RosettaEventSubscriber 自动注册总线
    ▼
-executeClass()                ← 查找并调用入口方法
+executeClass()                ← 入口方法发现与执行(Throwable 收口)
 ```
 
 ### 3.2 源码发现与过滤
@@ -163,519 +189,473 @@ executeClass()                ← 查找并调用入口方法
 `JavaScriptLoader.loadJavaScripts(Path)`:
 
 - 递归收集 `*.java`;
-- 过滤规则:`mixins/`、`replace/` 子路径下的文件不参与普通脚本加载(前者归 Mixin 管线,
-  后者归类替换管线);
-- 每个文件按"编译成功/失败"计数,输出 `Compiled x/y` 日志。
+- 过滤 `mixins/`、`replace/` 子路径(分别归 Mixin 与类替换管线);
+- **加载前按路径排序**,保证初始化顺序确定;
+- 输出 `Compiled x/y` 统计。
 
-### 3.3 MCP→SRG 源码转换
+### 3.3 运行时命名探测与 MCP→SRG 转换
 
-生产环境的 Minecraft 运行时使用 SRG 名称(`m_xxxxx_`),而用户脚本写的是官方(MCP/Mojmap)
-名称。`McpToSrgTransformer` 用 JavaParser 解析脚本 AST,重写三类节点:
+生产环境使用 SRG 名称(`m_xxxxx_`),脚本使用官方名称,因此需要源码级转换。当前实现:
 
-- `MethodCallExpr`(方法调用)
-- `FieldAccessExpr`(字段访问)
-- `NameExpr`(简单名)
+- `MinecraftHelper.isSrgRuntime()`:反射 `ItemStack` 的 `EMPTY` / `f_41583_` 字段判断命名模式,
+  结果缓存;`clearCache()` 可重置。
+- **仅 SRG 运行时执行转换**(`McpToSrgTransformer.transformSource`),dev 官方映射环境跳过,
+  避免把官方名改写成不存在的 SRG 名(这是 1.0.0 中导致 dev 脚本编译失败的缺陷之一)。
 
-名称解析委托给 `MinecraftHelper`,并沿继承链查找(`findSrgMethodInHierarchy` /
-`findSrgFieldInHierarchy`),只在 `TRANSFORM_PACKAGES` 白名单包内改写。
-转换失败时回退使用原始源码(仅告警)。
+`McpToSrgTransformer` 使用 JavaParser AST 重写方法调用/字段访问/简单名,沿继承链查找 SRG 名,
+仅在包白名单内改写;失败时回退原始源码并告警。
 
-**运行时命名探测**:仅当运行环境确实使用 SRG 命名(生产版)时才执行转换;
-dev(官方映射)环境会跳过转换,避免把官方名改写成不存在的 SRG 名。
-探测逻辑见 `MinecraftHelper.isSrgRuntime()`(反射 `ItemStack` 的 `EMPTY` / `f_41583_`)。
+### 3.4 内存编译(ECJ)与 classpath 构建
 
-### 3.4 内存编译(ECJ)
+`JavaSourceCompiler`:
 
-`JavaSourceCompiler` 的编译策略:
-
-- **编译器**:强制实例化重定位的 `EclipseCompiler`;若失败则整条脚本管线停用(不抛异常)。
-- **编译参数**:`-source 17 -target 17 -encoding UTF-8 -warn:none -proceedOnError
-  -g:vars,lines,source -preserveAllLocals`,并注册 Mixin 注解处理器
-  (`MixinObfuscationProcessorInjection/Targets`,`-Amixin.env.remapRefMap=true`)。
-- **classpath 构建**(`buildClassPath()`,按顺序去重):
+- 强制使用重定位的 `net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler`;
+- 选项:`-source 17 -target 17 -encoding UTF-8 -warn:none -proceedOnError -g:vars,lines,source
+  -preserveAllLocals` 及 Mixin 注解处理器参数;
+- `buildClassPath()` 顺序去重拼装:
   1. `java.class.path`
-  2. 线程上下文类加载器及其父链的 URL(`URLClassLoader.getURLs()` /
-     `BuiltinClassLoader.ucp` 反射)
-  3. `ModList.getMods()` 中每个 mod 的文件路径(多重探测:`getFilePath`/`getFile`/
-     `SecureJar.getPrimaryPath`/`toString` 解析)
-  4. 通过已知 MC 类(`Item`、`Block`、`ForgeRegistries`、`DeferredRegistration` 等)的
-     `ProtectionDomain`/`getResource` 反查 jar 路径
-  5. 游戏根目录、`mods/`、`libraries/` 目录扫描
-- **输入输出**:`InMemoryJavaFileObject`/`EclipseCompatibleJavaFileObject`(内存源码)与
-  `CustomFileManager`(把 class 写入 `ByteArrayOutputStream`),产物 `CompiledClass` 不落盘。
-- 编译错误解析 ECJ 的 `Line N:` 输出,写入 `ScriptErrorCollector`。
+  2. `jdk.module.path`(**dev 下补全 MC/Forge 模块 jar**)
+  3. **mod 自身 code source**(`build/classes/java/main`,供脚本引用 mod API)
+  4. 线程上下文/系统类加载器 URL 链(`URLClassLoader` 与 `BuiltinClassLoader.ucp`)
+  5. `ModList` 中全部 mod 文件路径
+  6. 通过已知 MC 类(`Item`/`Block`/`ForgeRegistries` 等)反查 jar
+  7. 游戏根、`mods/`、`libraries/` 目录扫描
+- 内存 FileObject 输入,`CustomFileManager` 捕获全部 CLASS 输出。
 
-### 3.5 类加载与执行
+### 3.5 ECJ 文件管理修正(本次关键修复)
 
-- `DynamicClassLoader extends ClassLoader`,parent 为线程上下文类加载器;
-  `findClass` 命中内存字节码时 `defineClass`,否则委派父加载器。**parent-first** 语义:
-  父加载器能解析的同名类无法被脚本覆盖。
-- 入口方法发现顺序(`JavaScriptLoader.executeClass`):
-  1. `public static` 且无参:依次尝试 `init` → `initialize` → `onLoad` → `load` → `register`;
-  2. `public static` 且参数为 `FMLJavaModLoadingContext` 的同名方法(传入 `FMLJavaModLoadingContext.get()`);
-  3. 都没有时:非抽象/非接口类尝试无参构造实例化;否则仅记录日志。
-- 执行顺序:文件列表在加载前按绝对路径排序,保证确定性。
-- 编译产物按**字节码中解析出的真实二进制名**(含 `$` 内部类)全部注册进
-  `DynamicClassLoader`,避免内部类/匿名类在反射解析时 `NoClassDefFoundError`。
-- `@RainEventSubscriber` 标注的脚本类在加载后自动 `RainJava.EVENT_BUS.register(clazz)`。
-
-### 3.6 热重载
-
-`/java reload [startup|server|client]` 调用链:
+ECJ 的 `EclipseCompilerImpl.getCompilationUnits()` 对每个编译单元执行:
 
 ```
-RainJavaCommands.reload()
-  ├─ ScriptErrorCollector.clear(type)
-  ├─ DistExecutor.unsafeRunWhenOn(CLIENT, RainJavaClientEvents::resetShownFlag)
-  └─ RainJavaCore.reload(type)
-       ├─ loadedFlags.put(type,false)
-       ├─ loaders.put(type, new JavaScriptLoader(type))   ← 整体替换
-       └─ doLoad(type)                                     ← 重新扫描/编译/执行
+if (fileManager.contains(SOURCE_PATH, unit))      → 直接使用
+else if (new File(unit.getName()).exists())       → 磁盘兜底
+else throw IllegalArgumentException("unit.missing" → "File {0} is missing")
 ```
 
-每次重载都会**重建整个加载器**:重新生成 ECJ 编译器、重新全量构建 classpath、新建
-`DynamicClassLoader`。语义上有两点需要知晓:
+修复前 `CustomFileManager` 未声明 SOURCE_PATH 能力,ECJ 走磁盘兜底;
+旧脚本包名 `rainjava.server` 与运行目录 `run/RainJava/` 在 **Windows 大小写不敏感**下偶然匹配,
+因此长期“碰巧可用”。重命名为 `rosetta.server` / `RosettaRemoteDebugBridge` 后巧合消失,全部脚本编译失败。
 
-- 旧的脚本类实例/静态状态被丢弃(可 GC),但**已注册到事件总线的监听器不会反注册**,
-  重载后同一脚本类会产生重复回调;
-- 旧 `DynamicClassLoader` 中的类不再可达,但若其它代码持有其引用(如注册表对象),
-  仍可能存活。
+**修复**:`CustomFileManager` 覆盖两处:
 
-### 3.7 类替换管线(设计存在,未接线)
+- `hasLocation(SOURCE_PATH)` → `true`;
+- `contains(SOURCE_PATH, 内存源文件对象)` → `true`(其余情况委托默认实现)。
 
-`ClassReplacementManager` 设计用于"用脚本重写现有类":
+由此 ECJ 全程使用内存内容,**与包名、目录名、工作目录无关**。修复以独立探针
+(`EcjProbe6`)在 JDK FileManager 上验证通过后再入工程。
 
-- 工作目录 `RainJava/replace/`;
-- `processReplacements()`:扫描 → `JavaSourceCompiler.compile(Path)` → 编译产物写入
-  `<进程CWD>/.rainjava_replacements/<pkg>/<Cls>.class`;
-- 日志注明"下次游戏启动时应用"。
+### 3.6 多 class 注册与类加载
 
-**1.0.0 中该类没有任何实例化点**,且没有任何代码读取 `.rainjava_replacements`,
-因此该功能实际不可用;相关辅助 `PathUtils.removeRainJavaPrefix` 也仅被它引用。
+- `CustomFileManager.getAllCompiledClasses()` 收集全部输出;
+- 每个 class 的**二进制名不再信任编译器传入名,而是解析字节码常量池 `this_class`**
+  (`JavaSourceCompiler.readBinaryClassName`),正确处理 `Outer$Inner`;
+- `JavaScriptLoader` 将 `CompiledClass.allClasses` 全部注册进 `DynamicClassLoader`,
+  `findClass` 命中内存字节码时 `defineClass`;
+- 解决了“内部类未注册导致反射解析方法签名时 `NoClassDefFoundError`”的崩服问题。
+
+### 3.7 入口方法发现与执行
+
+`executeClass` 规则:
+
+1. `public static` 无参方法,依次尝试 `init` → `initialize` → `onLoad` → `load` → `register`;
+2. `public static` 且参数为 `FMLJavaModLoadingContext` 的同名方法;
+3. 都没有时:非抽象/非接口类尝试无参构造实例化。
+
+异常处理:全部执行路径以 **`Throwable`** 收口,解包 `InvocationTargetException` 后写入
+`ScriptErrorCollector` 与日志——脚本的链接错误/初始化异常**不会崩服**,并可在 `/java errors` 中查看。
+
+### 3.8 热重载
+
+```
+/java reload <type>
+  → ScriptErrorCollector.clear(type)
+  → RosettaClientEvents.resetShownFlag()
+  → RosettaCore.reload(type)
+      → RosettaEventBus.unregisterByClassLoader(旧脚本类加载器)   ← 防止重复回调
+      → new JavaScriptLoader(type)(重建编译器/classpath/类加载器)
+      → doLoad(type)
+```
+
+旧类加载器连同其监听器一并注销,加载器整体替换;重载后监听器数量保持稳定(实测 1 → 1)。
+
+### 3.9 类替换管线
+
+`ClassReplacementManager` 编译 `RosettaRemoteDebugBridge/replace/` 下的源码到
+`<CWD>/.rainjava_replacements`(历史目录名),**输入与输出文件均支持多 class 编译产物**。
+
+当前版本在启动/重载时会输出明确警告:**替换产物不会被任何加载器消费**,运行期应用需要
+agent/class-transformer;该功能保持“仅编译”语义,避免误导。
 
 ---
 
 ## 4. 脚本 API
 
-### 4.1 事件总线(`net.rain.eventbus`)
-
-**注解**
+### 4.1 事件总线(`com.rosetta.remotedebugbridge.eventbus`)
 
 | 注解 | 目标 | 属性 |
 |---|---|---|
-| `@RainSubscribeEvent` | 方法 | `priority`(默认 `NORMAL`)、`receiveCanceled`(默认 false) |
-| `@RainEventSubscriber` | 类 | `bus`(默认 FORGE;仅用于日志,不改变实际总线) |
+| `@RosettaSubscribeEvent` | 方法 | `priority`(默认 NORMAL)、`receiveCanceled`(默认 false) |
+| `@RosettaEventSubscriber` | 类 | `bus`(仅日志展示,不改变实际总线) |
 
-**注册**:脚本类标注 `@RainEventSubscriber` 后由 `JavaScriptLoader.processRainEventSubscriber()`
-自动调用 `RainEventBus.register(Class)`。要求监听方法为 **static、public、恰好 1 个参数**,
-否则告警跳过;`register` 以传入的 Class 作为 owner,重复注册跳过,支持 `unregister(Class)`。
-
-**分发**:`RainEventBus.post(Object)` 沿事件类的**超类 + 接口 BFS** 收集全部类型,
-按优先级(HIGHEST→MONITOR)依次**同步反射调用** `method.invoke(null, event)`;
-单个监听器异常被捕获记录,不中断其它监听器。
-
-**取消语义**:仅当事件是 `net.minecraftforge.eventbus.api.Event` 时有效;
-被取消后,`receiveCanceled=false` 且非 MONITOR 的监听器被跳过。
-
-**线程模型**:在调用线程同步执行——服务端 tick/命令/聊天在 Server thread,客户端 tick
-在 Client thread,`RenderTickEvent` 在 Render thread,加载类事件在 mod 加载线程。
-总线容器为 `ConcurrentHashMap` + `CopyOnWriteArrayList`,注册与分发的并发是安全的。
+- **注册**:脚本类标注 `@RosettaEventSubscriber` 后由加载器自动 `EVENT_BUS.register(clazz)`;
+  要求监听方法 `static`、`public`、恰好 1 个参数;类检查带防御(反射失败仅告警不崩)。
+- **分发**:沿事件类超类+接口 BFS,按优先级 HIGHEST→MONITOR 同步反射调用;单监听器异常隔离。
+- **取消语义**:仅对 Forge `Event` 生效;`receiveCanceled=false` 且非 MONITOR 的监听器在取消后跳过。
+- **线程模型**:在触发线程同步执行(服务端 tick 在 Server thread,渲染事件在 Render thread 等)。
+- **注销**:`unregister(Class)`、`unregisterAll()`、`unregisterByClassLoader(ClassLoader)`
+  (热重载专用)、查询 API `getRegisteredClasses/getRegisteredEventTypes/getTotalListenerCount`。
 
 ### 4.2 Forge 事件桥(`api.ForgeEventBridge`)
 
-通过 `@Mod.EventBusSubscriber(modid="rainjava")` 把 Forge 事件原样转发到
-`RainJava.EVENT_BUS.post(...)`:
+通过 `@Mod.EventBusSubscriber` 把 Forge 事件原样转发到脚本总线:
 
 | 总线 | 数量 | 代表事件 |
 |---|---:|---|
 | MOD | 6 | `FMLCommonSetupEvent`、`FMLClientSetupEvent`、`FMLDedicatedServerSetupEvent`、`InterModEnqueueEvent`、`InterModProcessEvent`、`FMLLoadCompleteEvent` |
-| FORGE | 191 | Tick 族(Server/Client/Level/Player/Render,START+END)、生命周期(ServerStarting/Started/Stopping、TagsUpdated、AddReloadListener、OnDatapackSync…)、玩家(登录/登出/交互/物品/经验/进度…)、实体与生物(伤害/死亡/掉落/生成/效果…)、方块与世界(破坏/放置/爆炸/区块/流体…)、注册与数据(RegisterCommands、RegisterStructureConversions、LootTableLoad…) |
+| FORGE | 191 | Tick 族、生命周期、玩家/交互/物品、生物/伤害/生成、方块/世界/区块、命令/聊天、注册/数据等 |
 
-脚本因此可以用同一套总线监听几乎全部 Forge 事件,例如:
+### 4.3 映射反射助手(`script.utils.MinecraftHelper`)
 
-```java
-@RainEventSubscriber
-public class MyEvents {
-    @RainSubscribeEvent
-    public static void onPlayerTick(TickEvent.PlayerTickEvent e) { ... }
-}
-```
+- 数据源:优先 jar 内 `assets/mappings/map/mappings.tsrg`(TSRG2),失败回退磁盘映射文件;
+- 提供类名/方法(简单键+描述符键)/字段/返回类型映射与 `isSrgRuntime()` 命名探测;
+- 访问 API:`getStaticField/setStaticField/getField/setField`、`invokeStaticMethod/invokeMethod`
+  (支持类名+方法名字符串形式)、`findFieldType`、`clearCache`;
+- **方法解析已重写**:签名感知缓存、父类链查找、基本类型解箱匹配、重载消歧并在歧义时告警,
+  修复了上游“缓存键不含参数签名导致重载静默调错”的问题。
 
-### 4.3 映射反射助手(`MinecraftHelper`)
+### 4.4 网络封装(`script.util.NetworkUtils`,本版完整重写)
 
-用于在脚本中访问"映射表里存在但编译期不方便引用"的成员:
+- `init(modId)`:幂等创建 `SimpleChannel("<modId>:main")`,协议版本 `"1"`,双端校验;
+  **mod 在 `RosettaCore` 构造期自动以 `rosetta_remote_debug_bridge` 初始化**,脚本无需手动调用。
+- 注册:每个消息类**只注册一次**(无方向参数),接收侧按 `ctx.getDirection().getReceptionSide()`
+  分发到 `handleServer(player)` / `handleClient()`;`init` 之前的注册进入待注册队列。
+- `PacketBuilder` DSL:`writeString/Int/Long/Float/Double/Boolean/Bytes`,生成 `QuickPacket`;
+- `QuickPacket`:**命名频道 + 字节负载**;处理器通过
+  `onServerReceive(channel, handler)` / `onClientReceive(channel, handler)` 全局注册
+  (修复了上游处理器字段不参与序列化的问题);缺处理器时仅告警。
+- 分发 API:`sendToServer`、`sendToPlayer`、`sendToAllPlayers`、`sendToNearby(radius)`、`sendToDimension`。
+- 修复了上游类初始化即抛 `ExceptionInInitializerError` 的致命缺陷,并对晚注册给出兼容性告警。
 
-- **数据源**:优先从 jar 内资源 `assets/mappings/map/mappings.tsrg`(TSRG2)加载,
-  多重路径+三级 ClassLoader 探测;失败时回退磁盘文件
-  (`config/forge/mappings.tsrg`、`mappings/mappings.tsrg`、Gradle 缓存)。
-- **解析结构**:类名映射、方法映射(简单键 + 带描述符键)、返回类型、字段映射。
-- **公开 API**:`getStaticField/setStaticField/getField/setField`、
-  `invokeStaticMethod/invokeMethod`(支持按类名+方法名的字符串形式)、
-  `getParameterTypes`、`clearCache`;查找顺序为官方名 → `ObfuscationReflectionHelper`
-  → SRG 名,并缓存 Field/Method。
-- **已知短板**:方法缓存键不含参数签名(重载会误命中);基本类型参数匹配脆弱;
-  `findFieldType()` 为永远返回 null 的桩;常量 `MAPPING_RESOURCE_PATH` 路径拼写与
-  实际资源路径不一致(实际加载走多路径探测所以可用)。
+### 4.5 注册封装(`script.util.RegUtils`)
 
-### 4.4 网络封装(`NetworkUtils`)
-
-- `init(modid)` 创建 `SimpleChannel("modid:main")`,协议版本 `"1"`,双端版本校验;
-  幂等且校验 modId。**mod 在 `RainJavaCore` 构造期自动初始化通道**,脚本无需手动调用。
-- `register(Class, Supplier)` **每个消息类只注册一次**(无方向参数),处理体按
-  `ctx.getDirection().getReceptionSide()` 分发到 `handleServer(player)` / `handleClient()`;
-  在通道初始化前调用会进入待注册队列,初始化后统一注册。
-- `PacketBuilder` 提供顺序写 `String/int/long/float/double/boolean/byte[]` 的 DSL,
-  生成 `QuickPacket`;分发 API:`sendToServer`、`sendToPlayer`、`sendToAllPlayers`、
-  `sendToNearby(radius)`、`sendToDimension`。
-- `QuickPacket` 采用"命名频道 + 字节负载"设计:处理器通过
-  `onServerReceive(channel, handler)` / `onClientReceive(channel, handler)` 全局注册,
-  解决了原实现处理器字段不参与序列化的问题;同名频道缺处理器时仅告警。
-
-**修复记录**:原实现的静态块在通道赋值前注册消息,类初始化即抛
-`ExceptionInInitializerError`;现已移除静态注册、改为构造期自动初始化 + 待注册队列;
-双向重复注册改为单次注册 + 接收侧分发(见 §9.4)。
-
-### 4.5 注册封装(`RegUtils`)
-
-- `init(modId, modEventBus)` 为每个 modId 创建 `ModRegistries`,内含三个
-  `DeferredRegister`:`BLOCKS`、`ITEMS`、`ENTITY_TYPES`,并立即 `register(eventBus)`。
-- 便捷方法:`block`、`item`、`blockWithItem`、`stone()`(复制石头属性)、
-  `entity`(`EntityType.Builder`);`registerCustom` 支持 `Supplier`、实例、
-  `Class`(反射无参构造)、`Class + 参数`(按参数个数 + `isAssignable` 匹配构造器)。
-- `createRegister` 创建的自定义注册表会保存在 `ModRegistries.customRegisters` 中,
-  可通过 `getCustomRegister(modId, registryName)` 取回;`init` 校验 modId 与事件总线。
-- 局限:实体注册仅覆盖 `EntityType`;注册对象需脚本自行保存为静态字段,
-  否则热重载可能重复注册。
+- `init(modId, modEventBus)`:校验 modId 与事件总线,建立 `ModRegistries`
+  (`BLOCKS`/`ITEMS`/`ENTITY_TYPES` 三个 `DeferredRegister`);
+- 便捷方法:`block/item/blockWithItem/blockItem/stone/entity/itemProps/copy` 等;
+- `createRegister(...)` 创建自定义注册表并**保存引用**,可通过
+  `getCustomRegister(modId, registryName)` 取回;存储容器为并发 Map。
 
 ### 4.6 资源/数据包注入
 
-`RainJavaCore.onAddPackFinders` 把脚本旁的目录注册成资源包:
-
 | 目录 | Pack id | 类型 | 行为 |
 |---|---|---|---|
-| `RainJava/assets/` | `rainjava_assets` | `CLIENT_RESOURCES` | `Pack.Position.TOP`,required |
-| `RainJava/data/` | `rainjava_data` | `SERVER_DATA` | 同上 |
+| `RosettaRemoteDebugBridge/assets/` | `rosetta_assets` | `CLIENT_RESOURCES` | `Pack.Position.TOP`,required,实时读盘 |
+| `RosettaRemoteDebugBridge/data/` | `rosetta_data` | `SERVER_DATA` | 同上 |
 
-`RainJavaResourcePack implements PackResources`:命名空间为一级子目录;
-`getResource` **实时从磁盘读取**,因此改完文件后 `F3+T` 重载资源即可生效,无需重启;
-`pack.mcmeta` 的 `pack_format=15`,描述为 "RainJava Dynamic Resources"。
+`RosettaResourcePack implements PackResources`:命名空间为一级子目录,`getResource` 实时从磁盘读取,
+改文件后 `F3+T` 即生效;`pack_format=15`。
 
 ---
 
 ## 5. Mixin / CoreMod 子系统
 
-> 该子系统在 1.0.0 中**设计完整但未接线**(见 §5.5),以下先描述设计链路。
+> 设计完整保留;完整链路依赖外部 agent,当前环境自动检测并降级,不崩服。
 
 ### 5.1 设计链路
 
-目标:用户把 Mixin 源码放入 `RainJava/mixins/`,游戏内完成"扫描→编译→注册→生效":
+磁盘管线(`MixinManager.runFullWorkflow`):
 
 ```
-MixinManager.runFullWorkflow()
- ├─ scanMixinSources()      扫描源码,生成 MixinInfo{sourceFile,className,targetClass,side}
- ├─ needsRecompile()        与 compile_state.json 比对(文件数/mtime/size)
- ├─ compileMixins()         内存编译,class 落盘 .rain_mixin/rainjava/mixins/
- ├─ generateRefMap()        TSRG2 解析 @Shadow/@Inject/@Redirect 引用,生成 refmap
- ├─ generateMixinConfig()   写 .rain_mixin/rainjava.mixins.json
- ├─ saveCompileState()      写 compile_state.json
- ├─ validateConfiguration() 校验配置/class/path/classpath
- └─ showRestartMessage()    提示重启生效
+scanMixinSources() → needsRecompile() → compileMixins() → generateRefMap()
+→ generateMixinConfig() → saveCompileState() → validateConfiguration() → 提示重启
 ```
 
-运行期注册(另一条内存链路,`DynamicMixinLoader`):
+运行期内存管线(`DynamicMixinLoader`):
 
-1. `MixinProcessorHolder.getInstance()` 取全局 Mixin 处理器;
-2. 用 `BytecodeProviderWrapper` 包装并**替换 Mixin 服务的字节码提供器**;
-3. `JavaSourceCompiler` 内存编译 `mixins/` 源码;
-4. 字节码登记进包装器缓存(双键 `a.b.C` / `a/b/C`);
-5. `MixinConfig.createDynamic("dynamic_rainjava_<uuid8>","rainjava.mixins",1000,false)`
-   创建动态配置;
-6. `DefaultMixinConfigPlugin.registerDynamicMixin(name)` 登记 Mixin 名;
-7. 注入 `extensions`、`service`、`plugin` 等 Mixin 内部字段;
-8. `config.registerDynamicMixin(name, bytes)` → `prepare()` → `postInitialise()`;
-9. 把配置挂进 `MixinProcessor.configs` 并重排序;
-10. 目标类加载时,Mixin 经 `IClassBytecodeProvider.getClassNode()` 命中包装器缓存,
-    完成注入。
+```
+MixinProcessorHolder.getInstance()
+→ BytecodeProviderWrapper 包装并替换 Mixin 服务字节码提供器
+→ JavaSourceCompiler 编译 RosettaRemoteDebugBridge/mixins/ 源码
+→ 字节码登记(双键 a.b.C / a/b/C)
+→ MixinConfig.createDynamic("dynamic_rosetta_<uuid8>","rosetta.mixins",1000,false)
+→ DefaultMixinConfigPlugin.registerDynamicMixin(name)
+→ 注入 extensions/service/plugin 并挂入 MixinProcessor.configs
+→ 目标类加载时经 IClassBytecodeProvider.getClassNode() 命中内存字节码完成注入
+```
 
 ### 5.2 分支 Mixin 的扩展 API
 
-项目使用的 Mixin 被整体重定位为 `org.spongepowered.rain.asm`,并新增:
+分支(`org.spongepowered.rain.asm`)新增:
 
 | 扩展 | 作用 |
 |---|---|
-| `MixinProcessorHolder` | 全局 `MixinProcessor` 实例持有者(`get/setInstance`) |
-| `MixinConfig.createDynamic(name,pkg,priority,required)` | 构造空动态配置 |
-| `MixinConfig.registerDynamicMixin(name, bytes)` | 反射定义类 → 解析 → 构造 `MixinInfo` → `parseTargets/validate` |
-| `DefaultMixinConfigPlugin.registerDynamicMixin(name)` | 静态注册表,`getMixins()` 返回 |
+| `MixinProcessorHolder` | 全局 `MixinProcessor` 持有者(`get/setInstance`、`isAvailable`) |
+| `MixinConfig.createDynamic(...)` | 构造空动态配置 |
+| `MixinConfig.registerDynamicMixin(name, bytes)` | 反射定义类 → 解析 → 构造 `MixinInfo` |
+| `DefaultMixinConfigPlugin.registerDynamicMixin(name)` | 静态注册表 |
 | `MixinServiceModLauncher.forceInitializeBytecodeProvider()` | 预热字节码提供器 |
 
-该 fork 与 mod 代码**硬耦合**(如 `DefaultMixinConfigPlugin` 直接引用
-`RainJava.LOGGER`),不能独立使用。
+### 5.3 agent 补丁与磁盘兜底
 
-### 5.3 磁盘兜底与 agent 补丁
+`rainjava-core`(外部 jar)提供 ModLauncher 服务与内嵌 Java agent:自附加后补丁**原生 Mixin**
+的 `MixinInfo.loadMixinClass`,注入 `MixinInfoInjector.getMixinClassNode`,当正常提供器
+找不到 Mixin 类时从 `<gameDir>/.rosetta_mixin/<name>.class` 读取(磁盘兜底)。
 
-`rainjava-core`(独立 jar)提供:
+### 5.4 模块绕过
 
-- **ModLauncher 服务** `RainMixinTransformationService`(服务名 `rainmixin`),
-  在启动早期把自身从 ModLauncher 的发现列表/模块层中"摘除",避免暴露;
-- **自附加 Java agent**:从 `java.io.tmpdir` 释放内嵌 agent jar,通过
-  `VirtualMachine.attach(pid).loadAgent(...)` 注入;
-- **字节码补丁**(针对 Forge 原生 Mixin):
-  - 改写 `MixinInfo.loadMixinClass` 中的 `IClassBytecodeProvider.getClassNode(name,true)`
-    调用为 `MixinInfo.getMixinClassNode(provider,name,runTransformers,flags)`;
-  - 注入 `MixinInfoInjector.getMixinClassNode`:先走正常提供器,失败时从
-    `<gamedir>/.rain_mixin/<name>.class` 读取并解析为 `ClassNode`(磁盘兜底);
-  - 修 `MixinConfig.create` 的缺失资源异常路径。
-
-这套机制的目的是:在没有启动器参数配合的场景下,让 Mixin 能加载**磁盘上动态生成**的
-Mixin class。
-
-### 5.4 Unsafe / 模块绕过
-
-| 组件 | 手段 | 用途 |
+| 组件 | 手段 | 说明 |
 |---|---|---|
-| `RuntimeModuleOpener` | `Module.implAddOpensToAllUnnamed/implAddExportsToAllUnnamed`,失败降级为 `Unsafe` 直接改 `Module.openPackages` | 打开 `java.base`、Mixin 包给无名模块 |
-| `ModuleAccessHelper` | `implAddOpens/implAddReads` | 模块读/开放修正(未接线) |
-| `UnsafeClassDefiner` | 试图用 `Unsafe` 绕过 `defineClass` 访问控制 | **坏死代码**(句柄从未赋值,调用即 NPE) |
+| `RuntimeModuleOpener` | `implAddOpensToAllUnnamed` / `Unsafe` 修改 `Module.openPackages` | 每次创建脚本加载器时调用;失败降级为日志 |
+| `ModuleAccessHelper` | `implAddOpens/implAddReads` | 保留工具 |
+| `UnsafeClassDefiner` | **已重写**:trusted `MethodHandles.Lookup` + `ClassLoader.defineClass` | 原实现为坏死代码 |
 
-风险:直接修改 JDK 内部字段随版本失效;异常普遍降级为 debug 日志,故障静默。
-实测 dev 环境无 `--add-opens` 时,`RuntimeModuleOpener` 的模块打开全部失败(仅记录日志)。
+### 5.5 当前接线状态与降级策略
 
-### 5.5 1.0.0 的接线状态
-
-全量引用检索结论:
-
-| 组件 | 引用数 | 状态 |
-|---|---:|---|
-| `DynamicMixinLoader` / `MixinManager` / `BytecodeProviderInstaller` | 0 | 从未实例化 |
-| `MixinJarBuilder` / `MixinDebugHelper` / `MixinDiagnosticTool` | 0 | 仅诊断工具,未调用 |
-| `MixinConfigHelper` / `UnsafeClassDefiner` / `ModuleAccessHelper` / `MixinUtils` | 0 | 死代码 |
-| `JavaScriptLoader.processMixins()` | 调用但**空实现** | STARTUP 路径空转 |
-| `java.mixins.json` | 无注册机制(MANIFEST 无 `MixinConfigs`) | 孤儿文件(且引用了不存在的 `MixinBootstrap`) |
-| `RainMixinConnector` | MANIFEST 无 `MixinConnector` 属性 | 永不被 Mixin 调用 |
-
-即:**1.0.0 的 `mixins/`、`coremod/` 热注入链路整体不可用**;脚本、事件、资源包等
-其余功能不受影响。
+- `JavaScriptLoader.processMixins()` 现在会:
+  1. 检查 `MixinProcessorHolder.isAvailable()`;
+  2. 不可用时输出明确警告(提示需要 rainjava-core agent),**脚本与事件不受影响**;
+  3. 可用时尝试运行 `DynamicMixinLoader`,异常收口到 `ScriptErrorCollector` 且不崩服。
+- `DynamicMixinLoader` 对 `MixinProcessor == null` 的情况明确日志并终止本次尝试。
+- 构建时剥离了分支 Mixin 的 `META-INF/services`,避免与 Forge 原生 Mixin 的转换服务重名冲突
+  (上游 `Duplicate key mixin` 启动崩溃的根因)。
+- **结论**:动态 Mixin 的完整生效仍取决于运行环境(需要分支服务或 agent 激活);
+  本版保证“可检测、可降级、可诊断”。
 
 ---
 
 ## 6. 命令与权限
 
-注册于 `RegisterCommandsEvent`,根命令 `/java` 与别名 `/j`,**统一要求权限等级 2**。
+注册于 `RegisterCommandsEvent`,根命令 `/java` 与 `/j`,统一要求权限等级 2。
 
 | 命令 | 行为 |
 |---|---|
-| `/java reload [startup\|server\|client]` | 无参重载全部(顺序 SERVER→CLIENT→STARTUP);清空错误状态 → 重建加载器 → 统计结果 |
-| `/java errors [startup\|server\|client]` | 无参显示全部类型;输出错误/警告计数与前 5 条明细,附日志文件打开链接 |
-| `/java hand getId` | 手持物品注册名(青色、可点击复制);空手提示 |
-| `/java hand getClass` | 手持物品类名(金色、可复制);`ItemStack` 运行时类不同则追加一行 |
+| `/java reload [startup\|server\|client]` | 无参重载全部(顺序 SERVER→CLIENT→STARTUP);含监听器反注册 |
+| `/java errors [startup\|server\|client]` | 无参显示全部;输出计数与前 5 条明细,附日志打开链接 |
+| `/java hand getId` | 手持物品注册名(可点击复制);空手提示 |
+| `/java hand getClass` | 手持物品类名(可复制);`ItemStack` 运行时类不同则追加一行 |
 
-反馈格式:
-
-- 开始:`▶ RainJava: Reloading <type> scripts...`(黄)
-- 成功:`✔ RainJava: <type> scripts reloaded successfully.`(绿)
-- 失败:`✘ RainJava: <type> reload finished with N error(s) and M warning(s).`(红,
-  附 `[Open Log]`/`[View Error Screen]` 点击控件)
-- 无问题:`✔ RainJava <type>: No errors or warnings.`(绿)
-
-提示链接已修正:失败消息与客户端聊天消息中的 `[View Error Screen]` / `[Click to view errors]`
-均指向已注册的 `/java errors <type>`(原实现的 `/rainjava_errors` 从未注册)。
+反馈格式:开始 `▶`(黄)/ 成功 `✔`(绿)/ 失败 `✘`(红,附 `[Open Log]` 与
+`[View Error Screen]`,后者指向已注册的 `/java errors <type>`)。
 
 ---
 
 ## 7. 日志与错误系统
 
-### 7.1 日志(`RainJavaLogger`)
+### 7.1 日志(`RosettaLogger`)
 
-- 每类脚本一份独立文件:`<gameDir>/logs/Java/{startup|server|client}.log`
-  (截断模式,自动 flush);
-- 格式:`[yyyy-MM-dd HH:mm:ss] [TYPE/LEVEL] message`,同时镜像到 Log4j(`RainJava`);
-- 编译输出单独成块(`=== Compiler Output ===`),ECJ 原始输出完整落盘;
-- 首次初始化依赖 `FMLPaths` 就绪,失败会复位标志以便重试。
+- 每类脚本独立文件:`<gameDir>/logs/Rosetta/{startup|server|client}.log`(UTF-8,截断模式,自动 flush);
+- 格式 `[yyyy-MM-dd HH:mm:ss] [TYPE/LEVEL] message`,镜像到 Log4j(`RosettaRemoteDebugBridge`);
+- 编译器输出独立成块(`=== Compiler Output ===`)。
 
-### 7.2 错误模型(`ScriptError` / `ScriptErrorCollector`)
+### 7.2 错误模型
 
 - `ScriptError`:类型(ERROR/WARN)、脚本类型、消息、文件名、行号、时间戳、堆栈;
-- `ScriptErrorCollector`:按 `ScriptType` 分桶的 `CopyOnWriteArrayList`,提供
-  `addError/addWarning/addFromThrowable/clear` 与只读视图;
-- `/java errors` 与客户端错误屏均消费该收集器。
+  `fromThrowable` 会**解包** `InvocationTargetException` / `ExceptionInInitializerError`,保证消息可读。
+- `ScriptErrorCollector`:按 `ScriptType` 分桶的并发列表,供 `/java errors` 与客户端错误屏消费;
+  编译错误与运行期异常(执行/注册/扫描)均会进入收集器。
 
-**注意**:编译期错误会进入收集器;但脚本 **`init()` 运行期异常只写日志、不进收集器**
-(`executeClass` 捕获后仅 `logger.error`),因此此类错误在 `/java errors` 中显示为 0。
+### 7.3 客户端错误界面
 
-### 7.3 客户端错误界面(`RainJavaErrorScreen`)
-
-- **触发**:客户端 tick 检测到 STARTUP 错误且当前在主菜单时,自动弹出(每次运行一次);
-  进入世界后若有错误/警告,则发送聊天消息 `[RainJava] <type> scripts: N error(s)...`;
-- **内容**:列表展示序号、`文件名:行号`、时间、消息(最多 3 行);悬停显示堆栈
-  (Shift 展开全部);
-- **交互**:双击左键打开对应脚本文件;双击右键复制完整堆栈;按钮有
-  `Open Log File`、`Close`、(STARTUP 时为 `Quit Game`,且 ESC 不可关闭);
-- 右上角可在 `View Errors [n]` / `View Warnings [n]` 间切换。
+- 主菜单检测到 STARTUP 错误时自动弹出(单次);进世界后若有错误/警告,聊天栏提示并可点击查看;
+- 列表显示 `文件名:行号`、时间、消息;悬停看堆栈;双击左键打开脚本、双击右键复制堆栈;
+- 提供 `Open Log File`、`Close`、STARTUP 场景下的 `Quit Game`;支持错误/警告视图切换。
 
 ---
 
 ## 8. 典型数据流
 
-### 8.1 一次脚本热重载(完整调用链)
+### 8.1 一次热重载
 
 ```
-玩家:/java reload server
-  → RainJavaCommands.reload(ctx, SERVER)
-      → ScriptErrorCollector.clear(SERVER)
-      → RainJavaCore.reload(SERVER)
-          → loaders.put(SERVER, new JavaScriptLoader(SERVER))
-              → RuntimeModuleOpener.openMixinModules()
-              → new EclipseCompiler()            // 重定位 ECJ
-              → new JavaSourceCompiler(compiler)
-              → new DynamicClassLoader(TCCL)
-              → new McpToSrgTransformer()
-          → doLoad(SERVER)
-              → loader.loadJavaScripts(RainJava/server)
-                  → Files.walk → McpToSrg 转换 → ECJ 内存编译
-                  → DynamicClassLoader 定义并加载类
-              → processLoadedClasses()
-                  → @RainEventSubscriber 注册
-                  → executeClass() → init() 调用
-      → 统计错误/警告 → 聊天栏反馈(✔/✘)
+玩家: /java reload server
+ → RosettaCommands.reload(ctx, SERVER)
+     → ScriptErrorCollector.clear(SERVER)
+     → RosettaCore.reload(SERVER)
+         → RosettaEventBus.unregisterByClassLoader(旧加载器)
+         → new JavaScriptLoader(SERVER)   (ECJ/classpath/类加载器重建)
+         → doLoad(SERVER)
+             → 扫描→排序→命名探测→(SRG 时)转换→ECJ 内存编译
+             → 全部 class 注册(字节码真实二进制名)→ 入口执行(Throwable 收口)
+     → 统计结果 → 聊天栏反馈(✔/✘)
 ```
 
-### 8.2 一次事件派发(以玩家 tick 为例)
+### 8.2 一次事件派发
 
 ```
 Forge Server thread 触发 TickEvent.PlayerTickEvent
-  → ForgeEventBridge.ForgeBusHandler.onPlayerTick(e)
-      → RainJava.EVENT_BUS.post(e)
-          → BFS 收集 e 的超类/接口类型
-          → 按 priority 升序查找监听器
-          → 反射调用脚本方法 onPlayerTick(e)
+ → ForgeEventBridge.ForgeBusHandler.onPlayerTick(e)
+     → RosettaEventBus.post(e)
+         → BFS 收集类型 → 按优先级反射调用脚本监听器
 ```
 
-### 8.3 资源热更新
+### 8.3 一次网络消息
 
 ```
-玩家修改 RainJava/assets/<ns>/textures/foo.png
-  → 游戏内 F3+T(重载资源)
-      → RainJavaResourcePack.getResource() 实时读盘
-          → 新资源生效(无需重启,无需重载脚本)
+脚本: NetworkUtils.createPacket("mychan").writeString("hi").build().sendToPlayer(player)
+      (通道已由 mod 构造期自动初始化)
+接收端: QuickPacket.handleClient()
+      → CLIENT_RECEIVERS.get("mychan") → 用户处理器(FriendlyByteBuf)
+```
+
+### 8.4 资源热更新
+
+```
+修改 RosettaRemoteDebugBridge/assets/<ns>/... → F3+T
+ → RosettaResourcePack.getResource() 实时读盘 → 生效,无需重启
 ```
 
 ---
 
-## 9. 技术评估
+## 9. 工程质量与验证
 
-### 9.1 设计亮点
+### 9.1 自动化测试体系
 
-1. **完整的脚本闭环**:内存编译(ECJ)+ 内存类加载 + 自动入口方法 + 独立日志 +
-   错误界面 + 可点击反馈,形成了接近"游戏内 IDE"的体验。
-2. **映射感知的脚本兼容层**:`McpToSrgTransformer` + `MinecraftHelper` + 随包
-   `mappings.tsrg`,让用户在生产环境直接使用官方名称写脚本,是很务实的设计。
-3. **事件桥覆盖面广**:MOD 6 + FORGE 191 个事件的转发,加上注解式自动注册,
-   脚本能介入几乎全部游戏逻辑。
-4. **动态 Mixin 方案有技术深度**:fork 暴露 `MixinProcessorHolder` /
-   `createDynamic` / `registerDynamicMixin`,再配合 agent 改写原生 Mixin 的
-   类加载路径,给出了一条"无启动器参数也能动态注入 Mixin"的可行路线。
-5. **资源/数据包直读**:`PackResources` 实时读盘,改完即生效,免打包。
+`autotest/` 提供可复现的无人值守测试(外部驱动 + 脚本内断言):
 
-### 9.2 缺陷与风险清单(修复后状态)
-
-| 级别 | 问题 | 状态 |
-|---|---|---|
-| 高 | `NetworkUtils` 静态初始化顺序错误 | 已修复:构造期自动初始化 + 待注册队列 + 单次注册 |
-| 高 | 脚本执行异常不进错误收集器 | 已修复:执行/注册/扫描全部 `Throwable` 收口并解包消息 |
-| 高 | 内部类编译产物未注册导致 `NoClassDefFoundError` | 已修复:按字节码真实二进制名注册全部 class |
-| 高 | Mixin/CoreMod 管线未接线 | 已改进:可检测、可降级、失败不崩服;完整链路仍依赖外部 agent(环境限制) |
-| 中 | 热重载不反注册事件监听器 | 已修复:`RainEventBus.unregisterByClassLoader` + 重载前清理 |
-| 中 | 命令链接指向未注册的 `/rainjava_errors` | 已修复:统一指向 `/java errors <type>` |
-| 中 | `MinecraftHelper` 方法缓存忽略参数签名、基本类型匹配脆弱 | 已修复:签名感知缓存、父类查找、解箱匹配、重载消歧 |
-| 中 | dev 环境脚本编译 classpath 缺失 + MCP→SRG 误转 | 已修复:命名探测 + module path/自身 code source 并入 classpath |
-| 中 | `UnsafeClassDefiner` 坏死代码 | 已重写:trusted Lookup + `ClassLoader.defineClass` |
-| 低 | 脚本执行顺序不确定 | 已修复:路径排序 |
-| 低 | `RegUtils` 自定义注册表不保存引用、id 未校验 | 已修复:保存/取回、校验与文案 |
-| 低 | `ClassReplacementManager` 死功能 | 已标注:编译可用、运行期应用需 agent,日志明确提示 |
-
-### 9.3 安全模型
-
-- **信任边界 = 文件写入权限**:`RainJava/` 目录的写入者等价于在游戏进程内执行任意代码
-  (脚本零沙箱,可反射、可发网络包、可改字节码);
-- `/java` 命令要求 OP 2,但命令只是操作入口,不构成安全边界;
-- 防御性设计仅有:总线逐监听器 try/catch、错误收集/展示、日志分级;
-  没有脚本签名、哈希校验、沙箱或审计;
-- **结论**:适用于单人/整合包/调试场景,不适合多租户或不受信脚本环境。
-
-### 9.4 重构修复记录(本版本)
-
-| 文件 | 修复内容 |
+| 文件 | 作用 |
 |---|---|
-| `java/util/NetworkUtils.java` | 完整重写(见 §4.4) |
-| `java/JavaScriptLoader.java` | 运行期异常收口(Throwable)、错误消息解包、内部类全量注册、确定性排序、SRG 门控、Mixin 管线降级 |
-| `java/JavaSourceCompiler.java` | 字节码二进制名解析;classpath 并入 `jdk.module.path` 与自身 code source |
-| `java/CompiledClass.java` | 新增 `allClasses`(多 class 编译产物) |
-| `java/utils/MinecraftHelper.java` | `isSrgRuntime()`;方法解析重写(签名缓存/继承链/解箱/消歧);`findFieldType` 实现;资源路径常量修正 |
-| `java/util/RegUtils.java` | 自定义注册表保存与查询、id 校验、文案修正、并发容器 |
-| `java/helper/UnsafeClassDefiner.java` | 现代实现(trusted Lookup + defineClass) |
-| `eventbus/bus/RainEventBus.java` | `unregisterByClassLoader`;类检查防御 |
-| `core/RainJavaCore.java` | 重载前反注册;构造期初始化网络通道;示例文件 UTF-8 |
-| `logging/ScriptError.java` | 解包 `InvocationTargetException` / `ExceptionInInitializerError` |
-| `logging/RainJavaLogger.java` | 日志文件 UTF-8 |
-| `command/RainJavaCommands.java`、`client/RainJavaClientEvents.java` | 命令链接修正 |
-| `java/ClassReplacementManager.java` | 明确"仅编译、运行期不生效"的警告;支持多 class 输出 |
-| `java/DynamicMixinLoader.java` | 处理器缺失时明确日志并终止本次尝试 |
-| `script/JavaSourceCompiler.java` | `CustomFileManager.hasLocation(SOURCE_PATH)` 与 `contains(...)`:修复 ECJ 编译单元磁盘兜底检查导致的 `File ... is missing`(原实现依赖脚本包名与运行目录大小写不敏感巧合) |
-| 全项目重命名 | `net.rain.*` → `com.rosetta.remotedebugbridge.*`;`Rain*` → `Rosetta*`;modId/目录/资源包/日志路径统一改为 rosetta |
+| `autotest/server/AutoTest.java` | 测试驱动器:反射等待服务器就绪 → 执行命令 → 断言 → 写结果文件 → 自动退出客户端 |
+| `autotest/server/Listener.java` | `@RosettaEventSubscriber` 监听器(验证热重载不重复注册) |
+| `autotest/server/McImportTest.java` | 直接 `import net.minecraft.world.item.ItemStack`(验证脚本编译器 classpath 与命名转换) |
 
-**验证**:`autotest/` 提供可复现的无人值守测试(quickPlay + 反射断言,见 §7)。
-最近一次运行结果:`PASS=1`——监听器重载稳定(`listeners_before/after=1`)、
-运行期异常收集(`errors_during_temp_throw=1`、`temp_throw_detected=1`)、
-MC 导入脚本编译成功(`errors_before=0`)、网络通道初始化(`networkutils=OK`)、
-客户端自动退出(`BUILD SUCCESSFUL`)。
+流程:预生成世界 → 复制为 `run/saves/autotest` → `gradlew runClient -PquickPlay=autotest`
+→ 脚本自动进世界执行 → 结果写入 `run/rosetta-autotest-result.txt` → 客户端自动退出。
+
+### 9.2 最近验证结果
+
+```
+phase=client
+server=found
+serverRunning=true
+cmd_java_errors=1
+cmd_java_reload_startup=1
+cmd_java_hand_getId=1
+listeners_before=1
+errors_before=0
+networkutils=OK
+cmd_reload_with_temp_throw=1
+errors_during_temp_throw=1
+temp_throw_detected=1
+cmd_reload_cleanup=1
+errors_after_cleanup=0
+listeners_after=1
+listener_reload_stable=1
+PASS=1
+```
+
+覆盖点:脚本编译与执行、MC 导入编译、网络通道初始化、运行期异常收集、
+热重载监听器稳定性、命令族可用、客户端自动进出、世界正常保存。
+
+### 9.3 缺陷修复清单(相对上游 1.0.0)
+
+| 级别 | 问题 | 现状 |
+|---|---|---|
+| 高 | `NetworkUtils` 静态初始化即崩、双向重复注册、QuickPacket 处理器不可序列化 | 完整重写(§4.4) |
+| 高 | 脚本运行期异常不进错误收集器 | 全部 `Throwable` 收口并解包(§3.7) |
+| 高 | 内部类编译产物未注册 → `NoClassDefFoundError` 崩服 | 按字节码真实二进制名全量注册(§3.6) |
+| 高 | ECJ 编译单元磁盘兜底 → `File ... is missing` | `hasLocation/contains` 修正为纯内存(§3.5) |
+| 高 | Mixin/CoreMod 管线未接线 | 可检测、可降级、可诊断(§5.5) |
+| 中 | 热重载不反注册监听器 | `unregisterByClassLoader` + 重载清理(§3.8) |
+| 中 | 命令链接指向未注册命令 | 统一指向 `/java errors <type>` |
+| 中 | `MinecraftHelper` 方法缓存忽略参数签名、基本类型匹配脆弱 | 解析重写 + 命名探测(§4.3) |
+| 中 | dev 环境脚本编译 classpath 缺失 + MCP→SRG 误转 | module path/自身 code source + SRG 门控(§3.3/3.4) |
+| 中 | `UnsafeClassDefiner` 坏死代码 | 现代实现(§5.4) |
+| 低 | 脚本执行顺序不确定 | 路径排序(§3.2) |
+| 低 | `RegUtils` 自定义注册表不保存、id 未校验 | 保存/取回 + 校验(§4.5) |
+| 低 | `ClassReplacementManager` 死功能 | 明确“仅编译”语义 + 多 class 支持(§3.9) |
+
+### 9.4 命名迁移记录(本次)
+
+- 包名 `net.rain.rainjava.*` / `net.rain.eventbus.*` → `com.rosetta.remotedebugbridge.*`;
+- 类名 `RainJava*`/`Rain*` → `Rosetta*`(入口类为 `RosettaRemoteDebugBridge`);
+- modId/显示名/分组 → `rosetta_remote_debug_bridge` / RosettaRemoteDebugBridge / `com.rosetta.remotedebugbridge`;
+- 目录与资源:`RosettaRemoteDebugBridge/`、`rosetta_assets`/`rosetta_data`、
+  `logs/Rosetta/`、`.rosetta_mixin/`、`rosetta.mixins.json`、`rosetta.refmap.json`;
+- 脚本示例包名:`rosetta.startup` / `rosetta.server` / `rosetta.client`;
+- **保留的外部命名空间**:`net.rain.repack.*`、`org.spongepowered.rain.asm`、
+  `cpw.mods.modlauncher.MixinCore`(均为依赖/运行时机制需要,不改)。
+
+### 9.5 安全模型
+
+- **信任边界 = 文件写入权限**:脚本零沙箱,可读写文件、执行进程、开网络端口、改字节码;
+  `RosettaRemoteDebugBridge/` 目录的写入者等价于任意代码执行;
+- `/java` 命令要求 OP 2,但只是操作入口,不构成安全边界;
+- 防御性设计:执行/注册/扫描 `Throwable` 收口、监听器异常隔离、错误收集与界面提示、UTF-8 日志;
+- 适用场景:单人 / 整合包 / 调试;不适用于多租户或不受信脚本环境。
+
+### 9.6 已知限制与后续工作
+
+1. **动态 Mixin 完整生效依赖外部 agent/分支服务**(§5.5),当前保证降级与诊断;
+2. **`coremod/` 目录未接线**(上游遗留);
+3. **类替换仅编译、运行期不应用**(需 agent/class-transformer);
+4. 脚本编译器对**基本类型宽化**(如 `int`→`long`)不做隐式匹配;`MinecraftHelper` 对
+   `null` 实参存在歧义时按评分选择并告警;
+5. 生产 jar 已通过 reobf 构建,**尚未在正式(非 dev)客户端实测**;
+6. 事件桥为全量转发,重脚本场景建议自行做节流。
 
 ---
 
 ## 10. 附录
 
-### 附录 A:类清单(按包)
+### 附录 A:类清单(当前)
 
 | 包 | 类 |
 |---|---|
-| `net.rain.rainjava` | `RainJava`(入口) |
-| `.core` | `RainJavaCore`、`ScriptType` |
-| `.java` | `JavaScriptLoader`、`JavaSourceCompiler`(+4 内部类)、`DynamicClassLoader`、`McpToSrgTransformer`、`CompiledClass`、`ClassReplacementManager`、`MixinUtils` |
-| `.java.helper` | `BytecodeProviderInstaller`、`BytecodeProviderWrapper`、`MixinServiceHelper`、`MixinConfigHelper`、`ModuleAccessHelper`、`RuntimeModuleOpener`、`UnsafeClassDefiner` |
-| `.java.util` | `NetworkUtils`(+4 内部类)、`RegUtils` |
-| `.java.utils` | `MinecraftHelper`、`MC` |
-| `.mixin` | `MixinManager`(+4 内部类)、`DynamicMixinLoader`、`MixinJarBuilder`、`MixinDebugHelper`、`MixinDiagnosticTool`、`RainMixinConnector` |
+| `com.rosetta.remotedebugbridge` | `RosettaRemoteDebugBridge`(入口) |
+| `.core` | `RosettaCore`、`ScriptType` |
+| `.script` | `JavaScriptLoader`、`JavaSourceCompiler`(+4 内部类)、`DynamicClassLoader`、`CompiledClass`、`ClassReplacementManager`、`DynamicMixinLoader`、`MixinUtils` |
+| `.script.helper` | `BytecodeProviderInstaller`、`BytecodeProviderWrapper`、`MixinServiceHelper`、`MixinConfigHelper`、`ModuleAccessHelper`、`RuntimeModuleOpener`、`UnsafeClassDefiner` |
+| `.script.transformer` | `McpToSrgTransformer` |
+| `.script.util` | `NetworkUtils`(+内部类)、`RegUtils` |
+| `.script.utils` | `MinecraftHelper`、`MC` |
+| `.mixin` | `MixinManager`(+内部类)、`MixinJarBuilder`、`MixinDebugHelper`、`MixinDiagnosticTool`、`RosettaMixinConnector` |
 | `.mixin.refmap` | `RefMapGenerator` |
 | `.api` | `ForgeEventBridge` |
-| `.command` | `RainJavaCommands` |
-| `.client` | `RainJavaClientEvents`、`RainJavaErrorScreen` |
-| `.resources` | `RainJavaResourcePack` |
-| `.logging` | `RainJavaLogger`、`ScriptError`、`ScriptErrorCollector` |
+| `.command` | `RosettaCommands` |
+| `.client` | `RosettaClientEvents`、`RosettaErrorScreen` |
+| `.resources` | `RosettaResourcePack` |
+| `.logging` | `RosettaLogger`、`ScriptError`、`ScriptErrorCollector` |
 | `.utils` | `PathUtils` |
-| `net.rain.eventbus` | `RainSubscribeEvent`、`RainEventSubscriber`、`bus.RainEventBus` |
-| `cpw.mods.modlauncher.MixinCore` | `MixinInfoInjector`(磁盘 Mixin 兜底) |
+| `.eventbus` | `RosettaSubscribeEvent`、`RosettaEventSubscriber`、`bus.RosettaEventBus` |
+| `cpw.mods.modlauncher.MixinCore` | `MixinInfoInjector`(磁盘兜底,包名保留) |
 
-### 附录 B:文件/路径约定
+共 41 个源文件。
 
-| 路径 | 用途 |
+### 附录 B:路径与标识约定
+
+| 路径/标识 | 用途 |
 |---|---|
-| `RainJava/{startup,server,client}` | 脚本目录 |
-| `RainJava/{assets,data}` | 资源/数据包(实时读取) |
-| `RainJava/README.txt` | 自动生成的说明 |
-| `logs/Java/{startup,server,client}.log` | 分类日志 |
-| `.rain_mixin/` | 动态 Mixin 运行目录(配置/refmap/编译状态/class 兜底) |
-| `.rain_mixin/rainjava.mixins.json` | 动态 Mixin 配置(1.0.0 未生成) |
-| `.rain_mixin/rainjava.refmap.json` | refmap(1.0.0 未生成) |
-| `.rain_mixin/compile_state.json` | 增量编译状态(1.0.0 未生成) |
-| `.rainjava_replacements/` | 类替换输出(未接线) |
+| `RosettaRemoteDebugBridge/{startup,server,client}` | 脚本目录 |
+| `RosettaRemoteDebugBridge/{assets,data}` | 资源/数据包(实时读取) |
+| `logs/Rosetta/{startup,server,client}.log` | 分类日志(UTF-8) |
+| `.rosetta_mixin/` | 动态 Mixin 运行目录(配置/refmap/状态/class 兜底) |
+| `.rosetta_mixin/rosetta.mixins.json` | 动态 Mixin 配置 |
+| `.rosetta_mixin/rosetta.refmap.json` | refmap |
+| `run/rosetta-autotest-result.txt` | 自动化测试结果文件 |
+| `/java`、`/j` | 命令族(权限等级 2) |
 
-### 附录 C:关键实测数据(dev 环境)
+### 附录 C:构建 / 运行 / 测试命令
 
-| 项 | 数据 |
-|---|---|
-| 映射表加载 | 6,674 类 / 31,004 字段 / 54,309 方法(简单名)/ 57,813 方法(带描述符) |
-| 示例脚本编译 | `rainjava.startup.Example` → 602 字节 class |
-| 启动脚本执行 | 静态块阶段完成,早于 `FMLCommonSetupEvent` |
-| 客户端脚本 | ClientSetup 阶段加载 |
-| 服务端脚本 | `ServerStartingEvent` 阶段加载 |
-| 资源包 | `rainjava_assets` / `rainjava_data` 注册成功,`pack_format=15` |
+```powershell
+# 构建(输出 build/libs/rosetta_remote_debug_bridge-1.0.0.jar)
+.\gradlew.bat build
+
+# 开发运行
+.\gradlew.bat runClient
+.\gradlew.bat runServer --nogui
+
+# 无人值守测试(自动进 autotest 世界、执行断言、自动退出)
+.\gradlew.bat runClient -PquickPlay=autotest
+```
+
+### 附录 D:Git 历史
+
+```
+efabf47 Rename project to RosettaRemoteDebugBridge and fix ECJ in-memory source handling
+9a32d89 Fix 1.0.0 defects: network stack, script error handling, hot-reload, compiler, dev classpath
+38c4d74 Rewrite technical report to focus on RainJava project architecture and internals
+919e0aa Add technical report and usage guide
+d17b92e Remove CFR decompile summary artifact from source tree
+56d4c1d Initial commit: RainJava 1.0.0 reconstructed for Forge 1.20.1
+```
+
+> 上游项目 RainJava 由原作者 RainMelody 发布;本工程为其 1.0.0 的重构与重命名版本。
