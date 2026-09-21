@@ -10,6 +10,7 @@ package net.rain.eventbus.bus;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -34,8 +35,16 @@ public class RainEventBus {
             LOGGER.warn("[RainEventBus] Class already registered, skipping: {}", (Object)clazz.getName());
             return;
         }
+        Method[] methods;
+        try {
+            methods = clazz.getDeclaredMethods();
+        }
+        catch (Throwable t) {
+            LOGGER.error("[RainEventBus] Could not inspect class {}: {}", (Object)clazz.getName(), (Object)t.toString());
+            return;
+        }
         int count = 0;
-        for (Method method : clazz.getDeclaredMethods()) {
+        for (Method method : methods) {
             RainSubscribeEvent annotation = method.getAnnotation(RainSubscribeEvent.class);
             if (annotation == null) continue;
             if (!Modifier.isStatic(method.getModifiers())) {
@@ -80,6 +89,25 @@ public class RainEventBus {
         this.listenerMap.clear();
         this.registeredClasses.clear();
         LOGGER.info("[RainEventBus] All listeners unregistered");
+    }
+
+    public int unregisterByClassLoader(ClassLoader classLoader) {
+        if (classLoader == null) {
+            return 0;
+        }
+        int removed = 0;
+        for (List<MethodListener> list : this.listenerMap.values()) {
+            for (MethodListener ml : new ArrayList<MethodListener>(list)) {
+                if (ml.ownerClass().getClassLoader() == classLoader && list.remove(ml)) {
+                    ++removed;
+                }
+            }
+        }
+        this.registeredClasses.removeIf(c -> c.getClassLoader() == classLoader);
+        if (removed > 0) {
+            LOGGER.info("[RainEventBus] Unregistered {} listener(s) belonging to classloader {}", (Object)removed, (Object)classLoader);
+        }
+        return removed;
     }
 
     public void post(Object event) {

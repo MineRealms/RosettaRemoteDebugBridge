@@ -174,6 +174,10 @@ executeClass()                ← 查找并调用入口方法
 `findSrgFieldInHierarchy`),只在 `TRANSFORM_PACKAGES` 白名单包内改写。
 转换失败时回退使用原始源码(仅告警)。
 
+**运行时命名探测**:仅当运行环境确实使用 SRG 命名(生产版)时才执行转换;
+dev(官方映射)环境会跳过转换,避免把官方名改写成不存在的 SRG 名。
+探测逻辑见 `MinecraftHelper.isSrgRuntime()`(反射 `ItemStack` 的 `EMPTY` / `f_41583_`)。
+
 ### 3.4 内存编译(ECJ)
 
 `JavaSourceCompiler` 的编译策略:
@@ -204,7 +208,9 @@ executeClass()                ← 查找并调用入口方法
   1. `public static` 且无参:依次尝试 `init` → `initialize` → `onLoad` → `load` → `register`;
   2. `public static` 且参数为 `FMLJavaModLoadingContext` 的同名方法(传入 `FMLJavaModLoadingContext.get()`);
   3. 都没有时:非抽象/非接口类尝试无参构造实例化;否则仅记录日志。
-- 执行顺序取决于 `Files.walk` 的遍历顺序(**未排序**,不确定)。
+- 执行顺序:文件列表在加载前按绝对路径排序,保证确定性。
+- 编译产物按**字节码中解析出的真实二进制名**(含 `$` 内部类)全部注册进
+  `DynamicClassLoader`,避免内部类/匿名类在反射解析时 `NoClassDefFoundError`。
 - `@RainEventSubscriber` 标注的脚本类在加载后自动 `RainJava.EVENT_BUS.register(clazz)`。
 
 ### 3.6 热重载
@@ -307,22 +313,21 @@ public class MyEvents {
 
 ### 4.4 网络封装(`NetworkUtils`)
 
-- `init(modid)` 创建 `SimpleChannel("modid:main")`,协议版本 `"1"`,双端版本校验。
-- `register(Class, Supplier)` 对同一消息类分别注册 `PLAY_TO_SERVER` / `PLAY_TO_CLIENT`
-  两个方向,处理体经 `consumerMainThread` 回主线程(`handleServer(player)` /
-  `handleClient()`)。
+- `init(modid)` 创建 `SimpleChannel("modid:main")`,协议版本 `"1"`,双端版本校验;
+  幂等且校验 modId。**mod 在 `RainJavaCore` 构造期自动初始化通道**,脚本无需手动调用。
+- `register(Class, Supplier)` **每个消息类只注册一次**(无方向参数),处理体按
+  `ctx.getDirection().getReceptionSide()` 分发到 `handleServer(player)` / `handleClient()`;
+  在通道初始化前调用会进入待注册队列,初始化后统一注册。
 - `PacketBuilder` 提供顺序写 `String/int/long/float/double/boolean/byte[]` 的 DSL,
   生成 `QuickPacket`;分发 API:`sendToServer`、`sendToPlayer`、`sendToAllPlayers`、
   `sendToNearby(radius)`、`sendToDimension`。
+- `QuickPacket` 采用"命名频道 + 字节负载"设计:处理器通过
+  `onServerReceive(channel, handler)` / `onClientReceive(channel, handler)` 全局注册,
+  解决了原实现处理器字段不参与序列化的问题;同名频道缺处理器时仅告警。
 
-**严重缺陷(该类实际不可用)**:静态块 `{ packetId=0; registerQuickPacket(); }` 在
-`CHANNEL` 赋值(仅在 `init()` 中)之前就调用注册 → 类初始化即抛
-`ExceptionInInitializerError`;后续引用得到 `NoClassDefFoundError`。此外:
-
-- `QuickPacket` 的 `serverHandler/clientHandler` 不参与序列化,接收端回调恒为 null;
-- mod 自身不会调用 `init()`,通道无人初始化;
-- 同一消息类在两个方向以不同 id 注册,而 Forge 1.20.1 的 `IndexedMessageCodec`
-  以 Class 为键索引,后注册方向会覆盖索引,存在编号错乱风险。
+**修复记录**:原实现的静态块在通道赋值前注册消息,类初始化即抛
+`ExceptionInInitializerError`;现已移除静态注册、改为构造期自动初始化 + 待注册队列;
+双向重复注册改为单次注册 + 接收侧分发(见 §9.4)。
 
 ### 4.5 注册封装(`RegUtils`)
 
@@ -331,8 +336,10 @@ public class MyEvents {
 - 便捷方法:`block`、`item`、`blockWithItem`、`stone()`(复制石头属性)、
   `entity`(`EntityType.Builder`);`registerCustom` 支持 `Supplier`、实例、
   `Class`(反射无参构造)、`Class + 参数`(按参数个数 + `isAssignable` 匹配构造器)。
-- 局限:自定义注册表创建后不保存引用;实体注册仅覆盖 `EntityType`;未做 id 合法性校验;
-  注册对象需脚本自行保存为静态字段,否则热重载可能重复注册。
+- `createRegister` 创建的自定义注册表会保存在 `ModRegistries.customRegisters` 中,
+  可通过 `getCustomRegister(modId, registryName)` 取回;`init` 校验 modId 与事件总线。
+- 局限:实体注册仅覆盖 `EntityType`;注册对象需脚本自行保存为静态字段,
+  否则热重载可能重复注册。
 
 ### 4.6 资源/数据包注入
 
@@ -465,8 +472,8 @@ Mixin class。
   附 `[Open Log]`/`[View Error Screen]` 点击控件)
 - 无问题:`✔ RainJava <type>: No errors or warnings.`(绿)
 
-已知命令缺陷:失败消息中的 `[View Error Screen]` 指向 `/rainjava_errors <type>`,
-该命令**从未注册**(全库仅注册 `/java`、`/j`),点击无效。
+提示链接已修正:失败消息与客户端聊天消息中的 `[View Error Screen]` / `[Click to view errors]`
+均指向已注册的 `/java errors <type>`(原实现的 `/rainjava_errors` 从未注册)。
 
 ---
 
@@ -564,21 +571,22 @@ Forge Server thread 触发 TickEvent.PlayerTickEvent
    类加载路径,给出了一条"无启动器参数也能动态注入 Mixin"的可行路线。
 5. **资源/数据包直读**:`PackResources` 实时读盘,改完即生效,免打包。
 
-### 9.2 缺陷与风险清单(1.0.0 实测/代码确认)
+### 9.2 缺陷与风险清单(修复后状态)
 
-| 级别 | 问题 | 影响 |
+| 级别 | 问题 | 状态 |
 |---|---|---|
-| 高 | `NetworkUtils` 静态初始化顺序错误 | 整个网络封装不可用,报错隐晦 |
-| 高 | Mixin/CoreMod 管线未接线(§5.5) | 宣传的核心能力缺失 |
-| 高 | 脚本 `init()` 运行期异常不进错误收集器 | `/java errors` 显示 0,误导 |
-| 中 | 热重载不反注册事件监听器 | 重载后回调重复执行 |
-| 中 | 命令链接指向未注册的 `/rainjava_errors` | 客户端/聊天反馈点击无效 |
-| 中 | `MinecraftHelper` 方法缓存忽略参数签名、基本类型匹配脆弱 | 重载方法可能静默调错 |
-| 中 | Mixin 管线路径/命名约定不一致(`rainjava.mixins` 包名、扁平 class 落盘、两套入口命名) | 即使接线也难互通 |
-| 中 | `UnsafeClassDefiner` 坏死代码;`ModuleAccessHelper` 未接线 | 功能缺失/误导 |
-| 低 | 脚本执行顺序依赖 `Files.walk`(未排序) | 初始化顺序不确定 |
-| 低 | `RegUtils` 自定义注册表不保存引用、id 未校验 | 易用性/健壮性 |
-| 低 | `ClassReplacementManager` 与 `.rainjava_replacements` 无消费者 | 死功能 |
+| 高 | `NetworkUtils` 静态初始化顺序错误 | 已修复:构造期自动初始化 + 待注册队列 + 单次注册 |
+| 高 | 脚本执行异常不进错误收集器 | 已修复:执行/注册/扫描全部 `Throwable` 收口并解包消息 |
+| 高 | 内部类编译产物未注册导致 `NoClassDefFoundError` | 已修复:按字节码真实二进制名注册全部 class |
+| 高 | Mixin/CoreMod 管线未接线 | 已改进:可检测、可降级、失败不崩服;完整链路仍依赖外部 agent(环境限制) |
+| 中 | 热重载不反注册事件监听器 | 已修复:`RainEventBus.unregisterByClassLoader` + 重载前清理 |
+| 中 | 命令链接指向未注册的 `/rainjava_errors` | 已修复:统一指向 `/java errors <type>` |
+| 中 | `MinecraftHelper` 方法缓存忽略参数签名、基本类型匹配脆弱 | 已修复:签名感知缓存、父类查找、解箱匹配、重载消歧 |
+| 中 | dev 环境脚本编译 classpath 缺失 + MCP→SRG 误转 | 已修复:命名探测 + module path/自身 code source 并入 classpath |
+| 中 | `UnsafeClassDefiner` 坏死代码 | 已重写:trusted Lookup + `ClassLoader.defineClass` |
+| 低 | 脚本执行顺序不确定 | 已修复:路径排序 |
+| 低 | `RegUtils` 自定义注册表不保存引用、id 未校验 | 已修复:保存/取回、校验与文案 |
+| 低 | `ClassReplacementManager` 死功能 | 已标注:编译可用、运行期应用需 agent,日志明确提示 |
 
 ### 9.3 安全模型
 
@@ -588,6 +596,31 @@ Forge Server thread 触发 TickEvent.PlayerTickEvent
 - 防御性设计仅有:总线逐监听器 try/catch、错误收集/展示、日志分级;
   没有脚本签名、哈希校验、沙箱或审计;
 - **结论**:适用于单人/整合包/调试场景,不适合多租户或不受信脚本环境。
+
+### 9.4 重构修复记录(本版本)
+
+| 文件 | 修复内容 |
+|---|---|
+| `java/util/NetworkUtils.java` | 完整重写(见 §4.4) |
+| `java/JavaScriptLoader.java` | 运行期异常收口(Throwable)、错误消息解包、内部类全量注册、确定性排序、SRG 门控、Mixin 管线降级 |
+| `java/JavaSourceCompiler.java` | 字节码二进制名解析;classpath 并入 `jdk.module.path` 与自身 code source |
+| `java/CompiledClass.java` | 新增 `allClasses`(多 class 编译产物) |
+| `java/utils/MinecraftHelper.java` | `isSrgRuntime()`;方法解析重写(签名缓存/继承链/解箱/消歧);`findFieldType` 实现;资源路径常量修正 |
+| `java/util/RegUtils.java` | 自定义注册表保存与查询、id 校验、文案修正、并发容器 |
+| `java/helper/UnsafeClassDefiner.java` | 现代实现(trusted Lookup + defineClass) |
+| `eventbus/bus/RainEventBus.java` | `unregisterByClassLoader`;类检查防御 |
+| `core/RainJavaCore.java` | 重载前反注册;构造期初始化网络通道;示例文件 UTF-8 |
+| `logging/ScriptError.java` | 解包 `InvocationTargetException` / `ExceptionInInitializerError` |
+| `logging/RainJavaLogger.java` | 日志文件 UTF-8 |
+| `command/RainJavaCommands.java`、`client/RainJavaClientEvents.java` | 命令链接修正 |
+| `java/ClassReplacementManager.java` | 明确"仅编译、运行期不生效"的警告;支持多 class 输出 |
+| `java/DynamicMixinLoader.java` | 处理器缺失时明确日志并终止本次尝试 |
+
+**验证**:`autotest/` 提供可复现的无人值守测试(quickPlay + 反射断言,见 §7)。
+最近一次运行结果:`PASS=1`——监听器重载稳定(`listeners_before/after=1`)、
+运行期异常收集(`errors_during_temp_throw=1`、`temp_throw_detected=1`)、
+MC 导入脚本编译成功(`errors_before=0`)、网络通道初始化(`networkutils=OK`)、
+客户端自动退出(`BUILD SUCCESSFUL`)。
 
 ---
 

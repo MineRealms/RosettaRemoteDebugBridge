@@ -75,7 +75,7 @@ public class RainJavaClientEvents {
     private static void sendErrorChatMessage(Minecraft mc, ScriptType type) {
         int errCount = ScriptErrorCollector.getErrors(type).size();
         int warnCount = ScriptErrorCollector.getWarnings(type).size();
-        MutableComponent link = Component.literal((String)"[Click to view errors]").withStyle(s -> s.withColor(ChatFormatting.AQUA).withUnderlined(Boolean.valueOf(true)).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/rainjava_errors " + type.getName())));
+        MutableComponent link = Component.literal((String)"[Click to view errors]").withStyle(s -> s.withColor(ChatFormatting.AQUA).withUnderlined(Boolean.valueOf(true)).withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/java errors " + type.getName())));
         MutableComponent message = Component.literal((String)"[RainJava] ").withStyle(ChatFormatting.GOLD).append((Component)Component.literal((String)(type.getName() + " scripts: ")).withStyle(ChatFormatting.YELLOW)).append((Component)Component.literal((String)(errCount + " error(s)")).withStyle(errCount > 0 ? ChatFormatting.RED : ChatFormatting.GRAY)).append((Component)Component.literal((String)", ").withStyle(ChatFormatting.WHITE)).append((Component)Component.literal((String)(warnCount + " warning(s).  ")).withStyle(warnCount > 0 ? ChatFormatting.YELLOW : ChatFormatting.GRAY)).append((Component)link);
         mc.gui.getChat().addMessage((Component)message);
     }

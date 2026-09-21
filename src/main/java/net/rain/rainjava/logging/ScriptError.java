@@ -38,10 +38,14 @@ public class ScriptError {
     }
 
     public static ScriptError fromThrowable(Type type, ScriptType scriptType, String fileName, Throwable t) {
+        Throwable root = t;
+        while ((root instanceof java.lang.reflect.InvocationTargetException || root instanceof ExceptionInInitializerError) && root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
         StringWriter sw = new StringWriter();
         t.printStackTrace(new PrintWriter(sw));
         List<String> lines = List.of(sw.toString().split("\n"));
-        String msg = t.getMessage() != null ? t.getMessage() : t.getClass().getName();
+        String msg = root.getMessage() != null ? root.getMessage() : root.getClass().getName();
         return new ScriptError(type, scriptType, msg, fileName, -1L, lines);
     }
 

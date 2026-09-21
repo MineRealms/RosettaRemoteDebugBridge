@@ -61,8 +61,9 @@ public class ClassReplacementManager {
             RainJava.LOGGER.debug("Replace directory does not exist: {}", (Object)this.replaceDirectory);
             return;
         }
+        RainJava.LOGGER.warn("Class replacement output is compiled to {} but is NOT applied at runtime in this version (requires an agent/class-transformer).", (Object)this.replacementOutputPath);
         RainJava.LOGGER.info("========================================");
-        RainJava.LOGGER.info("Processing Class Replacements");
+        RainJava.LOGGER.info("Processing Class Replacements (compilation only)");
         RainJava.LOGGER.info("========================================");
         List<Path> javaFiles = this.scanJavaFiles();
         if (javaFiles.isEmpty()) {
@@ -100,8 +101,13 @@ public class ClassReplacementManager {
             Path realFile = PathUtils.removeRainJavaPrefix(file);
             CompiledClass compiled = this.compiler.compile(realFile);
             long compileTime = System.currentTimeMillis() - startTime;
+            if (compiled.allClasses != null) {
+                for (Map.Entry<String, byte[]> entry : compiled.allClasses.entrySet()) {
+                    this.compiledReplacements.put(entry.getKey().replace('.', '/'), entry.getValue());
+                }
+            }
             String internalClassName = compiled.className.replace('.', '/');
-            this.compiledReplacements.put(internalClassName, compiled.bytecode);
+            this.compiledReplacements.putIfAbsent(internalClassName, compiled.bytecode);
             RainJava.LOGGER.info("\u2713 Compiled: {} -> {} ({} bytes, {}ms)", (Object)file.getFileName(), (Object)internalClassName, (Object)compiled.bytecode.length, (Object)compileTime);
         }
         catch (Exception e) {
@@ -125,8 +131,8 @@ public class ClassReplacementManager {
                 RainJava.LOGGER.info("\u2713 Wrote replacement: {}", (Object)classFilePath);
                 ++successCount;
             }
-            RainJava.LOGGER.info("Successfully wrote {} replacement(s) to transformation directory", (Object)successCount);
-            RainJava.LOGGER.info("Replacements will be applied on next game start");
+            RainJava.LOGGER.info("Successfully wrote {} replacement(s) to {}", (Object)successCount, (Object)this.replacementOutputPath);
+            RainJava.LOGGER.warn("These .class files are not consumed by any loader in this version; applying class replacements requires an agent/class-transformer.");
         }
         catch (Exception e) {
             RainJava.LOGGER.error("Failed to write replacements to transformation directory", (Throwable)e);

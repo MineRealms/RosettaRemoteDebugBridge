@@ -23,7 +23,9 @@ package net.rain.rainjava.java.util;
 import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.BlockItem;
@@ -38,19 +40,22 @@ import net.minecraftforge.registries.IForgeRegistry;
 import net.minecraftforge.registries.RegistryObject;
 
 public class RegUtils {
-    private static final Map<String, ModRegistries> MOD_REGISTRIES = new HashMap<String, ModRegistries>();
+    private static final Map<String, ModRegistries> MOD_REGISTRIES = new ConcurrentHashMap<String, ModRegistries>();
 
     public static void init(String modId, IEventBus modEventBus) {
-        if (!MOD_REGISTRIES.containsKey(modId)) {
-            ModRegistries registries = new ModRegistries(modId, modEventBus);
-            MOD_REGISTRIES.put(modId, registries);
+        if (modId == null || !modId.matches("[a-z0-9_.-]+")) {
+            throw new IllegalArgumentException("Invalid mod id: " + modId);
         }
+        if (modEventBus == null) {
+            throw new IllegalArgumentException("modEventBus must not be null for mod '" + modId + "'");
+        }
+        MOD_REGISTRIES.computeIfAbsent(modId, id -> new ModRegistries((String)id, modEventBus));
     }
 
     private static ModRegistries getRegistries(String modId) {
         ModRegistries registries = MOD_REGISTRIES.get(modId);
         if (registries == null) {
-            throw new IllegalStateException("Mod '" + modId + "' \u672a\u521d\u59cb\u5316! \u8bf7\u5148\u8c03\u7528 RegUtil.init(modId, eventBus)");
+            throw new IllegalStateException("Mod '" + modId + "' is not initialized! Call RegUtils.init(modId, eventBus) first.");
         }
         return registries;
     }
@@ -68,9 +73,23 @@ public class RegUtils {
     }
 
     public static <T> DeferredRegister<T> createRegister(String modId, IForgeRegistry<T> registry, IEventBus eventBus) {
-        DeferredRegister register = DeferredRegister.create(registry, (String)modId);
-        register.register(eventBus);
+        if (registry == null) {
+            throw new IllegalArgumentException("registry must not be null");
+        }
+        ModRegistries registries = RegUtils.getRegistries(modId);
+        IEventBus bus = eventBus != null ? eventBus : registries.eventBus;
+        if (bus == null) {
+            throw new IllegalStateException("No IEventBus available for mod '" + modId + "'");
+        }
+        DeferredRegister<T> register = DeferredRegister.create(registry, (String)modId);
+        register.register(bus);
+        ResourceLocation registryName = registry.getRegistryName();
+        registries.customRegisters.put(registryName != null ? registryName.toString() : registry.toString(), register);
         return register;
+    }
+
+    public static DeferredRegister<?> getCustomRegister(String modId, String registryName) {
+        return RegUtils.getRegistries(modId).customRegisters.get(registryName);
     }
 
     public static <T> RegistryObject<T> registerCustom(DeferredRegister<T> register, String id, Supplier<T> supplier) {
@@ -243,8 +262,10 @@ public class RegUtils {
         final DeferredRegister<Item> items;
         final DeferredRegister<EntityType<?>> entities;
         final Map<String, DeferredRegister<?>> customRegisters;
+        final IEventBus eventBus;
 
         ModRegistries(String modId, IEventBus eventBus) {
+            this.eventBus = eventBus;
             this.blocks = DeferredRegister.create((IForgeRegistry)ForgeRegistries.BLOCKS, (String)modId);
             this.items = DeferredRegister.create((IForgeRegistry)ForgeRegistries.ITEMS, (String)modId);
             this.entities = DeferredRegister.create((IForgeRegistry)ForgeRegistries.ENTITY_TYPES, (String)modId);

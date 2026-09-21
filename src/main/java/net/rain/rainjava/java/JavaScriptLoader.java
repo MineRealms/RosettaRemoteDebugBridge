@@ -16,7 +16,9 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 import javax.tools.JavaCompiler;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
@@ -28,6 +30,7 @@ import net.rain.rainjava.java.DynamicClassLoader;
 import net.rain.rainjava.java.JavaSourceCompiler;
 import net.rain.rainjava.java.helper.RuntimeModuleOpener;
 import net.rain.rainjava.java.transformer.McpToSrgTransformer;
+import net.rain.rainjava.java.utils.MinecraftHelper;
 import net.rain.rainjava.logging.RainJavaLogger;
 import net.rain.rainjava.logging.ScriptErrorCollector;
 import net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler;
@@ -75,6 +78,31 @@ public class JavaScriptLoader {
     }
 
     public void processMixins() {
+        if (!this.isAvailable()) {
+            return;
+        }
+        try {
+            Class<?> holder = Class.forName("org.spongepowered.rain.asm.mixin.transformer.MixinProcessorHolder");
+            Object available = holder.getMethod("isAvailable").invoke(null);
+            if (!Boolean.TRUE.equals(available)) {
+                this.logger.warn("Dynamic Mixin pipeline unavailable: the relocated Mixin service is not active in this environment (rainjava-core agent missing or disabled). Scripts and events are unaffected.");
+                return;
+            }
+            Path root = RainJava.getCore() != null ? RainJava.getCore().getRootPath() : null;
+            if (root == null) {
+                this.logger.warn("Dynamic Mixin pipeline skipped: RainJava core is not initialized");
+                return;
+            }
+            DynamicMixinLoader loader = new DynamicMixinLoader(this.compiler, this.classLoader, root);
+            loader.loadDynamicMixins();
+        }
+        catch (ClassNotFoundException e) {
+            this.logger.warn("Dynamic Mixin pipeline unavailable: relocated Mixin classes are missing from the runtime (rainjava-core not installed). Scripts and events are unaffected.");
+        }
+        catch (Throwable t) {
+            this.logger.error("Dynamic Mixin pipeline failed: {}", t.getMessage(), t);
+            ScriptErrorCollector.addFromThrowable(ScriptType.STARTUP, "mixins", t);
+        }
     }
 
     public void loadJavaScripts(Path directory) {
@@ -104,6 +132,7 @@ public class JavaScriptLoader {
             this.logger.info("No Java script files found in {}", directory);
             return;
         }
+        javaFiles.sort(Comparator.comparing(path -> path.toAbsolutePath().normalize().toString()));
         this.logger.info("Found {} file(s) to compile in {}", javaFiles.size(), directory);
         int success = 0;
         for (Path file : javaFiles) {
@@ -130,11 +159,16 @@ public class JavaScriptLoader {
                 return false;
             }
             String originalSource = Files.readString(absPath);
-            try {
-                source = this.mcpTransformer.transformSource(originalSource, fileName);
+            if (MinecraftHelper.isSrgRuntime()) {
+                try {
+                    source = this.mcpTransformer.transformSource(originalSource, fileName);
+                }
+                catch (Exception e) {
+                    this.logger.warn("MCP->SRG transform failed for {}, using original source: {}", fileName, e.getMessage());
+                    source = originalSource;
+                }
             }
-            catch (Exception e) {
-                this.logger.warn("MCP->SRG transform failed for {}, using original source: {}", fileName, e.getMessage());
+            else {
                 source = originalSource;
             }
             String className = this.extractClassName(source, fileName);
@@ -158,15 +192,20 @@ public class JavaScriptLoader {
                 ScriptErrorCollector.addError(this.scriptType, "Compilation produced no bytecode", fileName, -1L);
                 return false;
             }
+            if (compiled.allClasses != null) {
+                for (Map.Entry<String, byte[]> entry : compiled.allClasses.entrySet()) {
+                    this.classLoader.addCompiledClass(entry.getKey(), entry.getValue());
+                }
+            }
             this.classLoader.addCompiledClass(compiled.className, compiled.bytecode);
             Class<?> clazz = this.classLoader.loadClass(compiled.className);
             this.loadedClasses.add(clazz);
             this.logger.info("  Loaded: {}", compiled.className);
             return true;
         }
-        catch (Exception e) {
-            this.logger.error("  FAIL: {}: {}", fileName, e.getMessage(), e);
-            ScriptErrorCollector.addFromThrowable(this.scriptType, fileName, e);
+        catch (Throwable t) {
+            this.logger.error("  FAIL: {}: {}", fileName, t.getMessage(), t);
+            ScriptErrorCollector.addFromThrowable(this.scriptType, fileName, t);
             return false;
         }
     }
@@ -203,9 +242,9 @@ public class JavaScriptLoader {
             try {
                 this.executeClass(clazz);
             }
-            catch (Exception e) {
-                this.logger.error("Failed to execute {}: {}", clazz.getName(), e.getMessage(), e);
-                ScriptErrorCollector.addFromThrowable(this.scriptType, clazz.getSimpleName() + ".java", e);
+            catch (Throwable t) {
+                this.logger.error("Failed to execute {}: {}", clazz.getName(), t.getMessage(), t);
+                ScriptErrorCollector.addFromThrowable(this.scriptType, clazz.getSimpleName() + ".java", t);
             }
         }
     }
@@ -219,9 +258,9 @@ public class JavaScriptLoader {
             RainJava.EVENT_BUS.register(clazz);
             this.logger.info("@RainEventSubscriber registered: {} -> {} bus", clazz.getSimpleName(), annotation.bus().name());
         }
-        catch (Exception e) {
-            this.logger.error("Failed to register @RainEventSubscriber for {}: {}", clazz.getSimpleName(), e.getMessage(), e);
-            ScriptErrorCollector.addFromThrowable(this.scriptType, clazz.getSimpleName() + ".java", e);
+        catch (Throwable t) {
+            this.logger.error("Failed to register @RainEventSubscriber for {}: {}", clazz.getSimpleName(), t.getMessage(), t);
+            ScriptErrorCollector.addFromThrowable(this.scriptType, clazz.getSimpleName() + ".java", t);
         }
     }
 
@@ -249,8 +288,10 @@ public class JavaScriptLoader {
                 }
             }
         }
-        catch (Exception e) {
-            this.logger.error("Error executing {}: {}", clazz.getName(), e.getMessage(), e);
+        catch (Throwable t) {
+            Throwable cause = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null ? t.getCause() : t;
+            this.logger.error("Error executing {}: {}", clazz.getName(), cause.getMessage(), cause);
+            ScriptErrorCollector.addFromThrowable(this.scriptType, clazz.getSimpleName() + ".java", t);
         }
     }
 

@@ -79,7 +79,7 @@ public class RainJavaCommands {
             } else {
                 RainJavaCommands.feedback(src, ChatFormatting.RED, "\u2718 RainJava: " + type.getName() + " reload finished with " + errCount + " error(s) and " + warnCount + " warning(s).");
                 MutableComponent logLink = Component.literal((String)" [Open Log]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, RainJavaLogger.logFile(type).toAbsolutePath().toString())).withColor(ChatFormatting.AQUA).withUnderlined(Boolean.valueOf(true)));
-                MutableComponent screenLink = Component.literal((String)" [View Error Screen]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/rainjava_errors " + type.getName())).withColor(ChatFormatting.RED).withUnderlined(Boolean.valueOf(true)));
+                MutableComponent screenLink = Component.literal((String)" [View Error Screen]").setStyle(Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/java errors " + type.getName())).withColor(ChatFormatting.RED).withUnderlined(Boolean.valueOf(true)));
                 src.sendSuccess(() -> Component.literal((String)"").append((Component)logLink).append((Component)screenLink), false);
             }
         }

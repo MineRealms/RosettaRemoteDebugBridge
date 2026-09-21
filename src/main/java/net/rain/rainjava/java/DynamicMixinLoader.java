@@ -73,7 +73,8 @@ public class DynamicMixinLoader {
             RainJava.LOGGER.info("========================================");
             MixinProcessor processor = MixinProcessorHolder.getInstance();
             if (processor == null) {
-                RainJava.LOGGER.error("MixinProcessor not available");
+                RainJava.LOGGER.warn("MixinProcessor not available: dynamic mixin loading requires the relocated Mixin service (rainjava-core agent). Skipping.");
+                initialized = true;
                 return;
             }
             try {

@@ -14,10 +14,12 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
@@ -35,9 +37,40 @@ public class MinecraftHelper {
     public static final Map<String, String> methodMappingsByDescriptor = new ConcurrentHashMap<String, String>();
     public static final Map<String, String> methodReturnTypesByDescriptor = new ConcurrentHashMap<String, String>();
     public static final Map<String, String> superClassCache = new ConcurrentHashMap<String, String>();
-    public static final String MAPPING_RESOURCE_PATH = "/assets/mapping/map/mappings.tsrg";
+    public static final String MAPPING_RESOURCE_PATH = "/assets/mappings/map/mappings.tsrg";
     public static boolean mappingLoaded = false;
     public static Path mappingFilePath = null;
+    private static volatile Boolean srgRuntime;
+
+    public static boolean isSrgRuntime() {
+        Boolean cached = srgRuntime;
+        if (cached != null) {
+            return cached;
+        }
+        boolean result = false;
+        try {
+            Class<?> itemStack = Class.forName("net.minecraft.world.item.ItemStack");
+            try {
+                itemStack.getDeclaredField("EMPTY");
+                result = false;
+            }
+            catch (NoSuchFieldException officialMissing) {
+                try {
+                    itemStack.getDeclaredField("f_41583_");
+                    result = true;
+                }
+                catch (NoSuchFieldException srgMissing) {
+                    result = false;
+                }
+            }
+        }
+        catch (Throwable ignored) {
+            result = false;
+        }
+        srgRuntime = result;
+        LOGGER.info("[MinecraftHelper] Runtime naming detected: {}", (Object)(result ? "SRG (production)" : "official (development)"));
+        return result;
+    }
 
     public static String normalizeClassName(String className) {
         if (className == null) {
@@ -463,6 +496,27 @@ public class MinecraftHelper {
     }
 
     public static String findFieldType(String className, String fieldName) {
+        if (className == null || className.isEmpty() || fieldName == null || fieldName.isEmpty()) {
+            return null;
+        }
+        String normalized = MinecraftHelper.normalizeClassName(className);
+        try {
+            Class<?> clazz = Class.forName(normalized);
+            if (!mappingLoaded) {
+                MinecraftHelper.loadMappingsFromResource();
+            }
+            String srgName = MinecraftHelper.findSrgFieldName(normalized, fieldName);
+            for (Class<?> current = clazz; current != null && current != Object.class; current = current.getSuperclass()) {
+                for (Field field : current.getDeclaredFields()) {
+                    if (field.getName().equals(fieldName) || srgName != null && field.getName().equals(srgName)) {
+                        return field.getType().getName();
+                    }
+                }
+            }
+        }
+        catch (Throwable t) {
+            LOGGER.debug("findFieldType failed for {}.{}: {}", (Object)className, (Object)fieldName, (Object)t.getMessage());
+        }
         return null;
     }
 
@@ -639,34 +693,7 @@ public class MinecraftHelper {
     }
 
     public static <T> T invokeStaticMethod(Class<?> clazz, String mcpName, Object ... args) {
-        String cacheKey = clazz.getName() + "." + mcpName;
-        Method method = methodCache.computeIfAbsent(cacheKey, k -> {
-            Class<?>[] paramTypes = MinecraftHelper.getParameterTypes(args);
-            try {
-                Method m = clazz.getDeclaredMethod(mcpName, paramTypes);
-                m.setAccessible(true);
-                return m;
-            }
-            catch (NoSuchMethodException m) {
-                String srg = MinecraftHelper.findSrgMethodName(clazz.getName(), mcpName);
-                if (srg != null) {
-                    try {
-                        Method m2 = clazz.getDeclaredMethod(srg, paramTypes);
-                        m2.setAccessible(true);
-                        return m2;
-                    }
-                    catch (NoSuchMethodException noSuchMethodException) {
-                        // empty catch block
-                    }
-                }
-                for (Method m3 : clazz.getDeclaredMethods()) {
-                    if (!m3.getName().equals(mcpName) && (srg == null || !m3.getName().equals(srg)) || m3.getParameterCount() != args.length) continue;
-                    m3.setAccessible(true);
-                    return m3;
-                }
-                throw new RuntimeException("Method not found: " + mcpName + " in " + clazz.getName());
-            }
-        });
+        Method method = MinecraftHelper.resolveCachedMethod(clazz, mcpName, args, true);
         try {
             return (T)method.invoke(null, args);
         }
@@ -679,41 +706,163 @@ public class MinecraftHelper {
         if (obj == null) {
             throw new IllegalArgumentException("Object cannot be null");
         }
-        Class<?> clazz = obj.getClass();
-        String cacheKey = clazz.getName() + "." + mcpName;
-        Method method = methodCache.computeIfAbsent(cacheKey, k -> {
-            Class<?>[] paramTypes = MinecraftHelper.getParameterTypes(args);
-            try {
-                Method m = clazz.getDeclaredMethod(mcpName, paramTypes);
-                m.setAccessible(true);
-                return m;
-            }
-            catch (NoSuchMethodException m) {
-                String srg = MinecraftHelper.findSrgMethodName(clazz.getName(), mcpName);
-                if (srg != null) {
-                    try {
-                        Method m2 = clazz.getDeclaredMethod(srg, paramTypes);
-                        m2.setAccessible(true);
-                        return m2;
-                    }
-                    catch (NoSuchMethodException noSuchMethodException) {
-                        // empty catch block
-                    }
-                }
-                for (Method m3 : clazz.getDeclaredMethods()) {
-                    if (!m3.getName().equals(mcpName) && (srg == null || !m3.getName().equals(srg)) || m3.getParameterCount() != args.length) continue;
-                    m3.setAccessible(true);
-                    return m3;
-                }
-                throw new RuntimeException("Method not found: " + mcpName + " in " + clazz.getName());
-            }
-        });
+        Method method = MinecraftHelper.resolveCachedMethod(obj.getClass(), mcpName, args, false);
         try {
             return (T)method.invoke(obj, args);
         }
         catch (Exception e) {
             throw new RuntimeException("Failed to invoke method: " + mcpName, e);
         }
+    }
+
+    private static Method resolveCachedMethod(Class<?> clazz, String mcpName, Object[] args, boolean staticOnly) {
+        if (args == null || MinecraftHelper.hasNull(args)) {
+            return MinecraftHelper.resolveMethod(clazz, mcpName, args, staticOnly);
+        }
+        String cacheKey = MinecraftHelper.methodCacheKey(clazz, mcpName, args) + (staticOnly ? "#static" : "#instance");
+        Method cached = methodCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        Method resolved = MinecraftHelper.resolveMethod(clazz, mcpName, args, staticOnly);
+        methodCache.put(cacheKey, resolved);
+        return resolved;
+    }
+
+    private static String methodCacheKey(Class<?> clazz, String name, Object[] args) {
+        StringBuilder sb = new StringBuilder(clazz.getName()).append('#').append(name).append('(');
+        if (args != null) {
+            for (int i = 0; i < args.length; ++i) {
+                if (i > 0) {
+                    sb.append(',');
+                }
+                sb.append(args[i] == null ? "?" : args[i].getClass().getName());
+            }
+        }
+        return sb.append(')').toString();
+    }
+
+    private static Method resolveMethod(Class<?> clazz, String mcpName, Object[] args, boolean staticOnly) {
+        if (mcpName == null || mcpName.isEmpty()) {
+            throw new IllegalArgumentException("Method name must not be empty");
+        }
+        Object[] actualArgs = args != null ? args : new Object[0];
+        if (!mappingLoaded) {
+            MinecraftHelper.loadMappingsFromResource();
+        }
+        String srgName = MinecraftHelper.findSrgMethodName(clazz.getName(), mcpName);
+        ArrayList<Method> candidates = new ArrayList<Method>();
+        for (Class<?> current = clazz; current != null && current != Object.class; current = current.getSuperclass()) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (method.getParameterCount() != actualArgs.length) continue;
+                if (Modifier.isStatic(method.getModifiers()) != staticOnly) continue;
+                if (!method.getName().equals(mcpName) && (srgName == null || !method.getName().equals(srgName))) continue;
+                method.setAccessible(true);
+                candidates.add(method);
+            }
+        }
+        if (candidates.isEmpty()) {
+            throw new RuntimeException("Method not found: " + mcpName + " with " + actualArgs.length + " argument(s) in " + clazz.getName() + " args=" + MinecraftHelper.describeArgTypes(actualArgs));
+        }
+        Method best = null;
+        int bestScore = -1;
+        for (Method candidate : candidates) {
+            int score = MinecraftHelper.scoreParameters(candidate.getParameterTypes(), actualArgs);
+            if (score < 0 || score <= bestScore) continue;
+            bestScore = score;
+            best = candidate;
+        }
+        if (best == null) {
+            throw new RuntimeException("No compatible overload for: " + mcpName + " in " + clazz.getName() + " args=" + MinecraftHelper.describeArgTypes(actualArgs));
+        }
+        if (candidates.size() > 1 && MinecraftHelper.hasNull(actualArgs)) {
+            LOGGER.warn("Ambiguous null argument for {} in {}: picked {} among {} candidates", (Object)mcpName, (Object)clazz.getName(), (Object)best, (Object)candidates.size());
+        }
+        return best;
+    }
+
+    private static int scoreParameters(Class<?>[] paramTypes, Object[] args) {
+        int score = 0;
+        for (int i = 0; i < paramTypes.length; ++i) {
+            Class<?> param = paramTypes[i];
+            Object arg = args[i];
+            if (arg == null) {
+                ++score;
+                continue;
+            }
+            Class<?> argType = arg.getClass();
+            if (param.equals(argType)) {
+                score += 4;
+                continue;
+            }
+            if (param.isAssignableFrom(argType)) {
+                score += 3;
+                continue;
+            }
+            if (MinecraftHelper.isUnboxingCompatible(param, argType)) {
+                score += 2;
+                continue;
+            }
+            return -1;
+        }
+        return score;
+    }
+
+    private static boolean isUnboxingCompatible(Class<?> param, Class<?> argType) {
+        if (!param.isPrimitive()) {
+            return false;
+        }
+        if (param == Integer.TYPE) {
+            return argType == Integer.class;
+        }
+        if (param == Long.TYPE) {
+            return argType == Long.class;
+        }
+        if (param == Float.TYPE) {
+            return argType == Float.class;
+        }
+        if (param == Double.TYPE) {
+            return argType == Double.class;
+        }
+        if (param == Boolean.TYPE) {
+            return argType == Boolean.class;
+        }
+        if (param == Byte.TYPE) {
+            return argType == Byte.class;
+        }
+        if (param == Short.TYPE) {
+            return argType == Short.class;
+        }
+        if (param == Character.TYPE) {
+            return argType == Character.class;
+        }
+        return false;
+    }
+
+    private static boolean hasNull(Object[] args) {
+        if (args == null) {
+            return false;
+        }
+        for (Object arg : args) {
+            if (arg == null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String describeArgTypes(Object[] args) {
+        if (args == null || args.length == 0) {
+            return "[]";
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < args.length; ++i) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(args[i] == null ? "null" : args[i].getClass().getName());
+        }
+        return sb.append(']').toString();
     }
 
     public static Class<?>[] getParameterTypes(Object ... args) {
@@ -739,6 +888,7 @@ public class MinecraftHelper {
         superClassCache.clear();
         mappingLoaded = false;
         mappingFilePath = null;
+        srgRuntime = null;
         LOGGER.info("MinecraftHelper cache cleared");
     }
 

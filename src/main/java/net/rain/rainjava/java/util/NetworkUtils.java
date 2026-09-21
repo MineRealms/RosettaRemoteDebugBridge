@@ -1,85 +1,179 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  io.netty.buffer.Unpooled
- *  net.minecraft.network.FriendlyByteBuf
- *  net.minecraft.resources.ResourceLocation
- *  net.minecraft.server.level.ServerPlayer
- *  net.minecraftforge.network.NetworkDirection
- *  net.minecraftforge.network.NetworkEvent$Context
- *  net.minecraftforge.network.NetworkRegistry
- *  net.minecraftforge.network.PacketDistributor
- *  net.minecraftforge.network.PacketDistributor$TargetPoint
- *  net.minecraftforge.network.simple.SimpleChannel
- */
 package net.rain.rainjava.java.util;
 
 import io.netty.buffer.Unpooled;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraftforge.network.NetworkDirection;
+import net.minecraftforge.fml.LogicalSide;
 import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-public class NetworkUtils {
-    private static SimpleChannel CHANNEL;
-    private static int packetId;
+public final class NetworkUtils {
+    private static final Logger LOGGER = LogManager.getLogger("RainJava/Network");
     private static final String PROTOCOL_VERSION = "1";
+    private static final List<PendingMessage<?>> PENDING = new ArrayList<PendingMessage<?>>();
+    private static final Set<Class<?>> REGISTERED = new HashSet<Class<?>>();
+    private static final Map<String, PacketBuilder.PacketHandler> SERVER_RECEIVERS = new ConcurrentHashMap<String, PacketBuilder.PacketHandler>();
+    private static final Map<String, PacketBuilder.ClientPacketHandler> CLIENT_RECEIVERS = new ConcurrentHashMap<String, PacketBuilder.ClientPacketHandler>();
+    private static String channelModId;
+    private static SimpleChannel channel;
+    private static int nextPacketId;
 
-    public static void init(String modid) {
-        CHANNEL = NetworkRegistry.newSimpleChannel((ResourceLocation)new ResourceLocation(modid, "main"), () -> PROTOCOL_VERSION, PROTOCOL_VERSION::equals, PROTOCOL_VERSION::equals);
+    private NetworkUtils() {
     }
 
-    public static <T extends SimplePacket> void register(Class<T> clazz, Supplier<T> factory) {
-        CHANNEL.messageBuilder(clazz, packetId++, NetworkDirection.PLAY_TO_SERVER).encoder((msg, buf) -> msg.write((FriendlyByteBuf)buf)).decoder(buf -> {
-            T packet = factory.get();
-            packet.read((FriendlyByteBuf)buf);
-            return packet;
-        }).consumerMainThread((msg, ctx) -> {
-            ((NetworkEvent.Context)ctx.get()).enqueueWork(() -> NetworkUtils.handleServerPacket((Supplier)ctx, msg));
-            ((NetworkEvent.Context)ctx.get()).setPacketHandled(true);
-        }).add();
-        CHANNEL.messageBuilder(clazz, packetId++, NetworkDirection.PLAY_TO_CLIENT).encoder((msg, buf) -> msg.write((FriendlyByteBuf)buf)).decoder(buf -> {
-            T packet = factory.get();
-            packet.read((FriendlyByteBuf)buf);
-            return packet;
-        }).consumerMainThread((msg, ctx) -> {
-            ((NetworkEvent.Context)ctx.get()).enqueueWork(() -> msg.handleClient());
-            ((NetworkEvent.Context)ctx.get()).setPacketHandled(true);
-        }).add();
+    public static synchronized SimpleChannel init(String modId) {
+        if (modId == null || modId.isBlank()) {
+            throw new IllegalArgumentException("NetworkUtils.init(modId): modId must not be blank");
+        }
+        ResourceLocation id = ResourceLocation.tryParse(modId + ":main");
+        if (id == null) {
+            throw new IllegalArgumentException("NetworkUtils.init(modId): invalid mod id '" + modId + "'");
+        }
+        if (channel != null) {
+            if (!modId.equals(channelModId)) {
+                throw new IllegalStateException("RainJava network channel already initialized for '" + channelModId + "', cannot re-init for '" + modId + "'");
+            }
+            return channel;
+        }
+        channel = NetworkRegistry.newSimpleChannel(id, () -> PROTOCOL_VERSION, PROTOCOL_VERSION::equals, PROTOCOL_VERSION::equals);
+        channelModId = modId;
+        nextPacketId = 0;
+        REGISTERED.clear();
+        registerNow(QuickPacket.class, QuickPacket::new);
+        for (PendingMessage<?> pending : PENDING) {
+            pending.register();
+        }
+        PENDING.clear();
+        LOGGER.info("[RainJava/Network] Channel '{}:main' initialized (protocol {})", modId, PROTOCOL_VERSION);
+        return channel;
+    }
+
+    public static boolean isInitialized() {
+        return channel != null;
+    }
+
+    public static SimpleChannel getChannel() {
+        SimpleChannel current = channel;
+        if (current == null) {
+            throw new IllegalStateException("RainJava network channel is not initialized. Call NetworkUtils.init(modId) from your script before sending or registering packets.");
+        }
+        return current;
+    }
+
+    public static synchronized <T extends SimplePacket> void register(Class<T> clazz, Supplier<T> factory) {
+        if (clazz == null || factory == null) {
+            throw new IllegalArgumentException("NetworkUtils.register(clazz, factory): arguments must not be null");
+        }
+        if (channel == null) {
+            PENDING.add(new PendingMessage<T>(clazz, factory));
+            return;
+        }
+        if (REGISTERED.contains(clazz)) {
+            LOGGER.warn("[RainJava/Network] Message class already registered, skipping: {}", clazz.getName());
+            return;
+        }
+        LOGGER.warn("[RainJava/Network] Late registration of {} after channel init; register messages during script init for multiplayer compatibility", clazz.getName());
+        registerNow(clazz, factory);
+    }
+
+    private static synchronized <T extends SimplePacket> void registerNow(Class<T> clazz, Supplier<T> factory) {
+        REGISTERED.add(clazz);
+        getChannel().messageBuilder(clazz, nextPacketId++)
+                .encoder((msg, buf) -> msg.write(buf))
+                .decoder(buf -> {
+                    T packet = factory.get();
+                    packet.read(buf);
+                    return packet;
+                })
+                .consumerMainThread((msg, ctxSupplier) -> {
+                    NetworkEvent.Context ctx = ctxSupplier.get();
+                    ctx.enqueueWork(() -> dispatch(msg, ctx));
+                    ctx.setPacketHandled(true);
+                })
+                .add();
+    }
+
+    private static <T extends SimplePacket> void dispatch(T msg, NetworkEvent.Context ctx) {
+        try {
+            if (ctx.getDirection().getReceptionSide() == LogicalSide.SERVER) {
+                ServerPlayer sender = ctx.getSender();
+                if (sender != null) {
+                    msg.handleServer(sender);
+                }
+            } else {
+                msg.handleClient();
+            }
+        }
+        catch (Throwable t) {
+            LOGGER.error("[RainJava/Network] Failed to handle packet {}: {}", msg.getClass().getName(), t.getMessage(), t);
+        }
     }
 
     public static PacketBuilder createPacket() {
         return new PacketBuilder();
     }
 
+    public static PacketBuilder createPacket(String channelName) {
+        return new PacketBuilder().channel(channelName);
+    }
+
     public static void registerQuickPacket() {
-        NetworkUtils.register(QuickPacket.class, QuickPacket::new);
+        register(QuickPacket.class, QuickPacket::new);
     }
 
-    private static /* synthetic */ void handleServerPacket(Supplier ctx, SimplePacket msg) {
-        ServerPlayer player = ((NetworkEvent.Context)ctx.get()).getSender();
-        if (player != null) {
-            msg.handleServer(player);
+    public static void onServerReceive(String channelName, PacketBuilder.PacketHandler handler) {
+        if (channelName == null || handler == null) {
+            throw new IllegalArgumentException("onServerReceive(channel, handler): arguments must not be null");
         }
+        SERVER_RECEIVERS.put(channelName, handler);
     }
 
-    static {
-        packetId = 0;
-        NetworkUtils.registerQuickPacket();
+    public static void onClientReceive(String channelName, PacketBuilder.ClientPacketHandler handler) {
+        if (channelName == null || handler == null) {
+            throw new IllegalArgumentException("onClientReceive(channel, handler): arguments must not be null");
+        }
+        CLIENT_RECEIVERS.put(channelName, handler);
+    }
+
+    private static final class PendingMessage<T extends SimplePacket> {
+        private final Class<T> clazz;
+        private final Supplier<T> factory;
+
+        private PendingMessage(Class<T> clazz, Supplier<T> factory) {
+            this.clazz = clazz;
+            this.factory = factory;
+        }
+
+        private void register() {
+            registerNow(this.clazz, this.factory);
+        }
     }
 
     public static class PacketBuilder {
         private final FriendlyByteBuf tempBuf = new FriendlyByteBuf(Unpooled.buffer());
-        private PacketHandler serverHandler;
-        private ClientPacketHandler clientHandler;
+        private String channelName = "default";
 
         private PacketBuilder() {
+        }
+
+        public PacketBuilder channel(String name) {
+            if (name == null || name.isBlank()) {
+                throw new IllegalArgumentException("Packet channel name must not be blank");
+            }
+            this.channelName = name;
+            return this;
         }
 
         public PacketBuilder writeString(String str) {
@@ -118,19 +212,19 @@ public class NetworkUtils {
         }
 
         public PacketBuilder onServerReceive(PacketHandler handler) {
-            this.serverHandler = handler;
+            NetworkUtils.onServerReceive(this.channelName, handler);
             return this;
         }
 
         public PacketBuilder onClientReceive(ClientPacketHandler handler) {
-            this.clientHandler = handler;
+            NetworkUtils.onClientReceive(this.channelName, handler);
             return this;
         }
 
         public QuickPacket build() {
             byte[] data = new byte[this.tempBuf.readableBytes()];
             this.tempBuf.readBytes(data);
-            return new QuickPacket(data, this.serverHandler, this.clientHandler);
+            return new QuickPacket(this.channelName, data);
         }
 
         @FunctionalInterface
@@ -146,47 +240,60 @@ public class NetworkUtils {
 
     public static class QuickPacket
     extends SimplePacket {
+        private String channelName;
         private byte[] data;
-        private final PacketBuilder.PacketHandler serverHandler;
-        private final PacketBuilder.ClientPacketHandler clientHandler;
-
-        private QuickPacket(byte[] data, PacketBuilder.PacketHandler serverHandler, PacketBuilder.ClientPacketHandler clientHandler) {
-            this.data = data;
-            this.serverHandler = serverHandler;
-            this.clientHandler = clientHandler;
-        }
 
         public QuickPacket() {
-            this(new byte[0], null, null);
+            this("default", new byte[0]);
+        }
+
+        public QuickPacket(String channelName, byte[] data) {
+            this.channelName = channelName == null ? "default" : channelName;
+            this.data = data == null ? new byte[0] : data;
+        }
+
+        public String getChannelName() {
+            return this.channelName;
+        }
+
+        public byte[] getData() {
+            return this.data;
+        }
+
+        public FriendlyByteBuf buffer() {
+            return new FriendlyByteBuf(Unpooled.wrappedBuffer(this.data));
         }
 
         @Override
         public void write(FriendlyByteBuf buf) {
-            buf.writeInt(this.data.length);
-            buf.writeBytes(this.data);
+            buf.writeUtf(this.channelName, 256);
+            buf.writeByteArray(this.data);
         }
 
         @Override
         public void read(FriendlyByteBuf buf) {
-            int length = buf.readInt();
-            this.data = new byte[length];
-            buf.readBytes(this.data);
+            this.channelName = buf.readUtf(256);
+            this.data = buf.readByteArray();
         }
 
         @Override
         public void handleServer(ServerPlayer player) {
-            if (this.serverHandler != null) {
-                FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.wrappedBuffer((byte[])this.data));
-                this.serverHandler.handle(buf, player);
+            PacketBuilder.PacketHandler handler = SERVER_RECEIVERS.get(this.channelName);
+            if (handler == null) {
+                LOGGER.warn("[RainJava/Network] No server receiver registered for quick-packet channel '{}'", this.channelName);
+                return;
             }
+            handler.handle(this.buffer(), player);
         }
 
         @Override
         public void handleClient() {
-            if (this.clientHandler != null) {
-                FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.wrappedBuffer((byte[])this.data));
-                this.clientHandler.handle(buf);
+            PacketBuilder.ClientPacketHandler handler = CLIENT_RECEIVERS.get(this.channelName);
+            if (handler == null) {
+                LOGGER.warn("[RainJava/Network] No client receiver registered for quick-packet channel '{}'", this.channelName);
+                return;
             }
+            handler.handle(this.buffer());
         }
     }
 
@@ -202,25 +309,24 @@ public class NetworkUtils {
         }
 
         public void sendToServer() {
-            CHANNEL.sendToServer((Object)this);
+            NetworkUtils.getChannel().sendToServer(this);
         }
 
         public void sendToPlayer(ServerPlayer player) {
-            CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), (Object)this);
+            NetworkUtils.getChannel().send(PacketDistributor.PLAYER.with(() -> player), this);
         }
 
         public void sendToAllPlayers() {
-            CHANNEL.send(PacketDistributor.ALL.noArg(), (Object)this);
+            NetworkUtils.getChannel().send(PacketDistributor.ALL.noArg(), this);
         }
 
         public void sendToNearby(ServerPlayer origin, double radius) {
             PacketDistributor.TargetPoint point = new PacketDistributor.TargetPoint(origin.getX(), origin.getY(), origin.getZ(), radius, origin.level().dimension());
-            CHANNEL.send(PacketDistributor.NEAR.with(() -> point), (Object)this);
+            NetworkUtils.getChannel().send(PacketDistributor.NEAR.with(() -> point), this);
         }
 
         public void sendToDimension(ServerPlayer player) {
-            CHANNEL.send(PacketDistributor.DIMENSION.with(() -> player.level().dimension()), (Object)this);
+            NetworkUtils.getChannel().send(PacketDistributor.DIMENSION.with(() -> player.level().dimension()), this);
         }
     }
 }
-

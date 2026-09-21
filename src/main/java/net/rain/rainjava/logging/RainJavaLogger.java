@@ -9,10 +9,12 @@
 package net.rain.rainjava.logging;
 
 import java.io.BufferedWriter;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileAttribute;
@@ -61,7 +63,7 @@ public class RainJavaLogger {
         for (ScriptType type : ScriptType.values()) {
             Path file = dir.resolve(type.getName() + ".log");
             try {
-                PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file.toFile(), false)), true);
+                PrintWriter pw = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file.toFile(), false), StandardCharsets.UTF_8)), true);
                 WRITERS.put(type, pw);
                 pw.printf("[%s] [%s/INFO] RainJava logger started%n", LocalDateTime.now().format(TS), type.getName().toUpperCase());
                 pw.flush();

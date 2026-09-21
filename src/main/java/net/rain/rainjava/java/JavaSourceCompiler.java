@@ -146,6 +146,19 @@ public class JavaSourceCompiler {
         if (systemClassPath != null && !systemClassPath.isEmpty()) {
             classpathEntries.addAll(Arrays.asList(systemClassPath.split(File.pathSeparator)));
         }
+        String modulePath = System.getProperty("jdk.module.path");
+        if (modulePath != null && !modulePath.isEmpty()) {
+            classpathEntries.addAll(Arrays.asList(modulePath.split(File.pathSeparator)));
+        }
+        try {
+            java.security.CodeSource codeSource = JavaSourceCompiler.class.getProtectionDomain().getCodeSource();
+            if (codeSource != null && codeSource.getLocation() != null && "file".equals(codeSource.getLocation().getProtocol())) {
+                classpathEntries.add(java.nio.file.Paths.get(codeSource.getLocation().toURI()).toString());
+            }
+        }
+        catch (Exception e) {
+            LOGGER.debug("[JavaSourceCompiler] Could not resolve own code source: {}", (Object)e.getMessage());
+        }
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         this.extractClassPath(classLoader, classpathEntries);
         ClassLoader sysLoader = ClassLoader.getSystemClassLoader();
@@ -437,6 +450,77 @@ public class JavaSourceCompiler {
         return this.classPath;
     }
 
+    private static String readBinaryClassName(byte[] classBytes) {
+        if (classBytes == null || classBytes.length < 12) {
+            return null;
+        }
+        try {
+            int constantPoolCount = (classBytes[8] & 0xFF) << 8 | classBytes[9] & 0xFF;
+            int[] utf8Offset = new int[constantPoolCount];
+            int[] utf8Length = new int[constantPoolCount];
+            int[] classNameIndex = new int[constantPoolCount];
+            int p = 10;
+            for (int i = 1; i < constantPoolCount; ++i) {
+                int tag = classBytes[p++] & 0xFF;
+                switch (tag) {
+                    case 1: {
+                        int length = (classBytes[p] & 0xFF) << 8 | classBytes[p + 1] & 0xFF;
+                        utf8Offset[i] = p + 2;
+                        utf8Length[i] = length;
+                        p += 2 + length;
+                        break;
+                    }
+                    case 7: {
+                        classNameIndex[i] = (classBytes[p] & 0xFF) << 8 | classBytes[p + 1] & 0xFF;
+                        p += 2;
+                        break;
+                    }
+                    case 8:
+                    case 16:
+                    case 19:
+                    case 20: {
+                        p += 2;
+                        break;
+                    }
+                    case 15: {
+                        p += 3;
+                        break;
+                    }
+                    case 3:
+                    case 4:
+                    case 9:
+                    case 10:
+                    case 11:
+                    case 12:
+                    case 17:
+                    case 18: {
+                        p += 4;
+                        break;
+                    }
+                    case 5:
+                    case 6: {
+                        p += 8;
+                        ++i;
+                        break;
+                    }
+                    default: {
+                        return null;
+                    }
+                }
+            }
+            int thisClassIndex = (classBytes[p + 2] & 0xFF) << 8 | classBytes[p + 3] & 0xFF;
+            int nameIndex = classNameIndex[thisClassIndex];
+            if (nameIndex <= 0 || nameIndex >= constantPoolCount || utf8Offset[nameIndex] <= 0) {
+                return null;
+            }
+            String internalName = new String(classBytes, utf8Offset[nameIndex], utf8Length[nameIndex], java.nio.charset.StandardCharsets.UTF_8);
+            return internalName.replace('/', '.');
+        }
+        catch (Throwable t) {
+            return null;
+        }
+    }
+
     private void extractClassPath(ClassLoader classLoader, Set<String> classpathEntries) {
         if (classLoader == null) {
             return;
@@ -534,7 +618,7 @@ public class JavaSourceCompiler {
             LOGGER.error("[JavaSourceCompiler] Available outputs: " + String.valueOf(fileManager.outputFiles.keySet()));
             throw new RuntimeException("No bytecode generated for class: " + className + ". Available: " + String.valueOf(fileManager.outputFiles.keySet()));
         }
-        return new CompiledClass(className, bytecode);
+        return new CompiledClass(className, bytecode, fileManager.getAllCompiledClasses());
     }
 
     private String extractClassName(String source) {
@@ -649,16 +733,37 @@ public class JavaSourceCompiler {
             this.standardManager = systemCompiler.getStandardFileManager(null, null, null);
         }
 
-        public byte[] getCompiledClass(String className) {
-            OutputJavaFileObject file = this.outputFiles.get(className);
-            if (file != null && file.getBytes() != null && file.getBytes().length > 0) {
-                return file.getBytes();
+        public Map<String, byte[]> getAllCompiledClasses() {
+            HashMap<String, byte[]> classes = new HashMap<String, byte[]>();
+            for (OutputJavaFileObject file : this.outputFiles.values()) {
+                byte[] bytes = file.getBytes();
+                if (bytes == null || bytes.length <= 0) continue;
+                String binaryName = JavaSourceCompiler.readBinaryClassName(bytes);
+                if (binaryName == null || binaryName.isEmpty()) continue;
+                classes.put(binaryName, bytes);
             }
-            for (Map.Entry<String, OutputJavaFileObject> entry : this.outputFiles.entrySet()) {
-                String key = entry.getKey();
-                byte[] bytes = entry.getValue().getBytes();
-                if (!key.equals(className) && !key.startsWith(className + "$") || bytes == null || bytes.length <= 0) continue;
-                return bytes;
+            return classes;
+        }
+
+        public byte[] getCompiledClass(String className) {
+            OutputJavaFileObject direct = this.outputFiles.get(className);
+            if (direct != null && direct.getBytes() != null && direct.getBytes().length > 0) {
+                return direct.getBytes();
+            }
+            for (OutputJavaFileObject file : this.outputFiles.values()) {
+                byte[] bytes = file.getBytes();
+                if (bytes == null || bytes.length <= 0) continue;
+                if (className.equals(JavaSourceCompiler.readBinaryClassName(bytes))) {
+                    return bytes;
+                }
+            }
+            for (OutputJavaFileObject file : this.outputFiles.values()) {
+                byte[] bytes = file.getBytes();
+                if (bytes == null || bytes.length <= 0) continue;
+                String binaryName = JavaSourceCompiler.readBinaryClassName(bytes);
+                if (binaryName != null && binaryName.startsWith(className + "$")) {
+                    return bytes;
+                }
             }
             for (OutputJavaFileObject output : this.outputFiles.values()) {
                 byte[] bytes = output.getBytes();

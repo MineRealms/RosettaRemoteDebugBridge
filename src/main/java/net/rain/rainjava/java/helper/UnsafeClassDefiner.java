@@ -1,118 +1,140 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  org.apache.logging.log4j.LogManager
- *  org.apache.logging.log4j.Logger
- */
 package net.rain.rainjava.java.helper;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.AccessibleObject;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import sun.misc.Unsafe;
 
-public class UnsafeClassDefiner {
+public final class UnsafeClassDefiner {
     private static final Logger LOGGER = LogManager.getLogger();
-    private static Unsafe unsafe;
-    private static MethodHandle defineClassHandle;
-    private static boolean initialized;
+    private static volatile MethodHandle defineClassHandle;
+    private static volatile MethodHandles.Lookup trustedLookup;
+    private static volatile boolean initializationFailed;
 
-    public static boolean initialize() {
-        if (initialized) {
-            return true;
-        }
-        return true;
+    private UnsafeClassDefiner() {
     }
 
-    private static MethodHandle createDefineClassHandle() {
+    public static synchronized boolean initialize() {
+        if (defineClassHandle != null) {
+            return true;
+        }
+        if (initializationFailed) {
+            return false;
+        }
         try {
-            Class<MethodHandles.Lookup> lookupClass = MethodHandles.Lookup.class;
-            Constructor constructor = lookupClass.getDeclaredConstructor(Class.class, Integer.TYPE);
-            Field overrideField = AccessibleObject.class.getDeclaredField("override");
-            long overrideOffset = unsafe.objectFieldOffset(overrideField);
-            unsafe.putBoolean(constructor, overrideOffset, true);
-            Object fullLookup = constructor.newInstance(ClassLoader.class, -1);
-            LOGGER.info("[UnsafeClassDefiner]   \u2713 Created full-privilege Lookup");
-            Method findVirtualMethod = lookupClass.getMethod("findVirtual", Class.class, String.class, MethodType.class);
-            LOGGER.info("[UnsafeClassDefiner]   \u2713 Found defineClass via MethodHandle");
-            return null;
+            Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            Unsafe unsafe = (Unsafe)unsafeField.get(null);
+            Field implLookupField = MethodHandles.Lookup.class.getDeclaredField("IMPL_LOOKUP");
+            MethodHandles.Lookup implLookup = (MethodHandles.Lookup)unsafe.getObject(unsafe.staticFieldBase(implLookupField), unsafe.staticFieldOffset(implLookupField));
+            trustedLookup = MethodHandles.privateLookupIn(UnsafeClassDefiner.class, implLookup);
+            defineClassHandle = implLookup.findVirtual(ClassLoader.class, "defineClass", MethodType.methodType(Class.class, String.class, byte[].class, Integer.TYPE, Integer.TYPE));
+            LOGGER.info("[UnsafeClassDefiner] Ready (trusted Lookup + ClassLoader.defineClass)");
+            return true;
         }
-        catch (Exception e) {
-            LOGGER.debug("[UnsafeClassDefiner] MethodHandle.Lookup approach failed: {}", (Object)e.getMessage());
-            try {
-                Method defineClassMethod = ClassLoader.class.getDeclaredMethod("defineClass", String.class, byte[].class, Integer.TYPE, Integer.TYPE);
-                Field overrideField = AccessibleObject.class.getDeclaredField("override");
-                long overrideOffset = unsafe.objectFieldOffset(overrideField);
-                unsafe.putBoolean(defineClassMethod, overrideOffset, true);
-                MethodHandles.Lookup lookup = MethodHandles.lookup();
-                MethodHandle handle = lookup.unreflect(defineClassMethod);
-                LOGGER.info("[UnsafeClassDefiner]   \u2713 Found defineClass via unreflect");
-                return handle;
-            }
-            catch (Exception e2) {
-                LOGGER.error("[UnsafeClassDefiner] All approaches failed", (Throwable)e2);
-                e2.printStackTrace();
-                return null;
-            }
+        catch (Throwable t) {
+            initializationFailed = true;
+            LOGGER.warn("[UnsafeClassDefiner] Not available on this JVM: {}", (Object)t.toString());
+            return false;
         }
+    }
+
+    public static boolean isAvailable() {
+        return UnsafeClassDefiner.initialize();
     }
 
     public static Class<?> defineClass(ClassLoader loader, String className, byte[] bytecode) {
-        if (!initialized && !UnsafeClassDefiner.initialize()) {
-            throw new IllegalStateException("UnsafeClassDefiner not initialized");
+        if (loader == null) {
+            throw new IllegalArgumentException("loader must not be null");
+        }
+        if (className == null || className.isEmpty()) {
+            throw new IllegalArgumentException("className must not be empty");
+        }
+        if (bytecode == null || bytecode.length == 0) {
+            throw new IllegalArgumentException("bytecode must not be empty");
+        }
+        if (!UnsafeClassDefiner.initialize()) {
+            try {
+                return loader.loadClass(className);
+            }
+            catch (ClassNotFoundException e) {
+                throw new IllegalStateException("UnsafeClassDefiner is not available on this JVM and the class is not loadable: " + className, e);
+            }
         }
         try {
-            LOGGER.info("[UnsafeClassDefiner] Defining class: {}", (Object)className);
-            Class clazz = (Class)defineClassHandle.invoke(loader, className, bytecode, 0, bytecode.length);
-            LOGGER.info("[UnsafeClassDefiner] \u2705 Successfully defined class: {}", (Object)className);
-            return clazz;
+            return (Class<?>)defineClassHandle.invoke(loader, className, bytecode, 0, bytecode.length);
         }
-        catch (Throwable e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof LinkageError || e instanceof LinkageError) {
-                LOGGER.info("[UnsafeClassDefiner] Class {} already defined", (Object)className);
+        catch (Throwable t) {
+            Throwable cause = t.getCause() != null ? t.getCause() : t;
+            if (cause instanceof LinkageError) {
                 try {
                     return loader.loadClass(className);
                 }
-                catch (ClassNotFoundException ex) {
-                    throw new RuntimeException("Class already defined but cannot be loaded", ex);
+                catch (ClassNotFoundException e) {
+                    throw new RuntimeException("Class already defined but cannot be loaded: " + className, e);
                 }
             }
-            LOGGER.error("[UnsafeClassDefiner] Failed to define class: {}", (Object)className, (Object)e);
-            throw new RuntimeException("Failed to define class: " + className, e);
+            throw new RuntimeException("Failed to define class: " + className, cause);
         }
     }
 
     public static boolean verify() {
-        if (!initialized && !UnsafeClassDefiner.initialize()) {
+        if (!UnsafeClassDefiner.initialize()) {
             return false;
         }
         try {
-            byte[] testBytecode = UnsafeClassDefiner.generateTestClass();
-            ClassLoader testLoader = UnsafeClassDefiner.class.getClassLoader();
-            Class<?> testClass = UnsafeClassDefiner.defineClass(testLoader, "TestClass_" + System.currentTimeMillis(), testBytecode);
-            LOGGER.info("[UnsafeClassDefiner] \u2705 Verification successful");
+            String binaryName = "rainjava.verify.Verify" + System.nanoTime();
+            String internalName = binaryName.replace('.', '/');
+            byte[] testBytecode = UnsafeClassDefiner.generateTestClass(internalName);
+            ClassLoader loader = UnsafeClassDefiner.class.getClassLoader();
+            Class<?> testClass = UnsafeClassDefiner.defineClass(loader, binaryName, testBytecode);
+            LOGGER.info("[UnsafeClassDefiner] Verification successful: {}", (Object)testClass.getName());
             return true;
         }
-        catch (Exception e) {
-            LOGGER.error("[UnsafeClassDefiner] Verification failed", (Throwable)e);
+        catch (Throwable t) {
+            LOGGER.error("[UnsafeClassDefiner] Verification failed", t);
             return false;
         }
     }
 
-    private static byte[] generateTestClass() {
-        return new byte[]{-54, -2, -70, -66, 0, 0, 0, 55, 0, 4, 7, 0, 2, 1, 0, 9, 84, 101, 115, 116, 67, 108, 97, 115, 115, 7, 0, 3, 1, 0, 16, 106, 97, 118, 97, 47, 108, 97, 110, 103, 47, 79, 98, 106, 101, 99, 116, 0, 33, 0, 1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0};
+    private static byte[] generateTestClass(String internalName) {
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            DataOutputStream out = new DataOutputStream(bytes);
+            out.writeInt(0xCAFEBABE);
+            out.writeShort(0);
+            out.writeShort(61);
+            out.writeShort(5);
+            out.writeByte(1);
+            out.writeUTF(internalName);
+            out.writeByte(7);
+            out.writeShort(1);
+            out.writeByte(1);
+            out.writeUTF("java/lang/Object");
+            out.writeByte(7);
+            out.writeShort(3);
+            out.writeShort(0x0021);
+            out.writeShort(2);
+            out.writeShort(4);
+            out.writeShort(0);
+            out.writeShort(0);
+            out.writeShort(0);
+            out.writeShort(0);
+            out.flush();
+            return bytes.toByteArray();
+        }
+        catch (IOException e) {
+            throw new RuntimeException("Failed to generate test class bytecode", e);
+        }
     }
 
-    static {
-        initialized = false;
+    public static MethodHandles.Lookup trustedLookup() {
+        return UnsafeClassDefiner.initialize() ? trustedLookup : MethodHandles.lookup();
     }
 }
-
