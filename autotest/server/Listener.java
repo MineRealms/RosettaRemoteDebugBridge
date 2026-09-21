@@ -1,14 +1,14 @@
-package rainjava.server;
+package rosetta.server;
 
-import net.rain.eventbus.RainEventSubscriber;
-import net.rain.eventbus.RainSubscribeEvent;
+import com.rosetta.remotedebugbridge.eventbus.RosettaEventSubscriber;
+import com.rosetta.remotedebugbridge.eventbus.RosettaSubscribeEvent;
 
-@RainEventSubscriber
+@RosettaEventSubscriber
 public class Listener {
     public static final class Ping {
     }
 
-    @RainSubscribeEvent
+    @RosettaSubscribeEvent
     public static void onPing(Ping event) {
     }
 }

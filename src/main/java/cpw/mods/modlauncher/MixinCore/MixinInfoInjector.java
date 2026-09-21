@@ -15,7 +15,7 @@ public class MixinInfoInjector {
         }
         catch (IOException | ClassNotFoundException e) {
             String relative = name.replace('.', '/');
-            Path file = FMLPaths.GAMEDIR.get().resolve(".rain_mixin").resolve(relative + ".class");
+            Path file = FMLPaths.GAMEDIR.get().resolve(".rosetta_mixin").resolve(relative + ".class");
             try {
                 byte[] bytes = Files.readAllBytes(file);
                 MixinClassReader reader = new MixinClassReader(bytes, name);

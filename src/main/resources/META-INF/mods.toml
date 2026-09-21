@@ -3,20 +3,20 @@ loaderVersion="[47,)"
 license="MIT"
 
 [[mods]]
-modId="rainjava"
+modId="rosetta_remote_debug_bridge"
 version="1.0.0"
-displayName="RainJava"
+displayName="RosettaRemoteDebugBridge"
 authors="Rain"
 description='''Runtime Java compiler with Mixin injection and ASM transformation support'''
 
-[[dependencies.rainjava]]
+[[dependencies.rosetta_remote_debug_bridge]]
     modId="forge"
     mandatory=true
     versionRange="[47,)"
     ordering="NONE"
     side="BOTH"
 
-[[dependencies.rainjava]]
+[[dependencies.rosetta_remote_debug_bridge]]
     modId="minecraft"
     mandatory=true
     versionRange="[1.20.1,1.21)"

@@ -1,4 +1,4 @@
-package rainjava.server;
+package rosetta.server;
 
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -10,7 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public class AutoTest {
-    private static final String DONE_PROPERTY = "rainjava.autotest.done";
+    private static final String DONE_PROPERTY = "rosetta_remote_debug_bridge.autotest.done";
     private static final StringBuilder RESULT = new StringBuilder();
 
     private static Path gameDir() {
@@ -18,7 +18,7 @@ public class AutoTest {
     }
 
     private static Path resultFile() {
-        return gameDir().resolve("rainjava-autotest-result.txt");
+        return gameDir().resolve("rosetta-autotest-result.txt");
     }
 
     private static synchronized void save(String line) {
@@ -34,7 +34,7 @@ public class AutoTest {
             return;
         }
         System.setProperty(DONE_PROPERTY, "1");
-        Thread thread = new Thread(AutoTest::run, "RainJava-AutoTest");
+        Thread thread = new Thread(AutoTest::run, "RosettaRemoteDebugBridge-AutoTest");
         thread.setDaemon(true);
         thread.start();
     }
@@ -93,8 +93,8 @@ public class AutoTest {
             boolean network = networkUtilsCheck();
             save("networkutils=" + (network ? "OK" : "FAILED"));
 
-            Path tempThrow = gameDir().resolve("RainJava").resolve("server").resolve("TempThrow.java");
-            Files.write(tempThrow, "package rainjava.server;\n\npublic class TempThrow {\n    public static void init() {\n        throw new RuntimeException(\"intentional-autotest\");\n    }\n}\n".getBytes(StandardCharsets.UTF_8));
+            Path tempThrow = gameDir().resolve("RosettaRemoteDebugBridge").resolve("server").resolve("TempThrow.java");
+            Files.write(tempThrow, "package rosetta.server;\n\npublic class TempThrow {\n    public static void init() {\n        throw new RuntimeException(\"intentional-autotest\");\n    }\n}\n".getBytes(StandardCharsets.UTF_8));
             runCommand(server, execute, commands, perform, source, "java reload server", "cmd_reload_with_temp_throw");
             int errorsDuring = errorCount("SERVER");
             save("errors_during_temp_throw=" + errorsDuring);
@@ -143,8 +143,8 @@ public class AutoTest {
 
     private static int listenerCount() {
         try {
-            Class<?> rainJava = Class.forName("net.rain.rainjava.RainJava");
-            Object bus = rainJava.getField("EVENT_BUS").get(null);
+            Class<?> bridgeClass = Class.forName("com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge");
+            Object bus = bridgeClass.getField("EVENT_BUS").get(null);
             return (Integer) bus.getClass().getMethod("getTotalListenerCount").invoke(bus);
         } catch (Throwable t) {
             return -1;
@@ -152,7 +152,7 @@ public class AutoTest {
     }
 
     private static Object scriptType(String typeName) throws Exception {
-        Class<?> scriptTypeClass = Class.forName("net.rain.rainjava.core.ScriptType");
+        Class<?> scriptTypeClass = Class.forName("com.rosetta.remotedebugbridge.core.ScriptType");
         for (Object constant : scriptTypeClass.getEnumConstants()) {
             if (String.valueOf(constant).equalsIgnoreCase(typeName)) {
                 return constant;
@@ -163,7 +163,7 @@ public class AutoTest {
 
     private static int errorCount(String typeName) {
         try {
-            Class<?> collector = Class.forName("net.rain.rainjava.logging.ScriptErrorCollector");
+            Class<?> collector = Class.forName("com.rosetta.remotedebugbridge.logging.ScriptErrorCollector");
             Object type = scriptType(typeName);
             List<?> errors = (List<?>) collector.getMethod("getErrors", type.getClass()).invoke(null, type);
             return errors.size();
@@ -174,7 +174,7 @@ public class AutoTest {
 
     private static String errorMessages(String typeName) {
         try {
-            Class<?> collector = Class.forName("net.rain.rainjava.logging.ScriptErrorCollector");
+            Class<?> collector = Class.forName("com.rosetta.remotedebugbridge.logging.ScriptErrorCollector");
             Object type = scriptType(typeName);
             List<?> errors = (List<?>) collector.getMethod("getErrors", type.getClass()).invoke(null, type);
             StringBuilder sb = new StringBuilder();
@@ -189,7 +189,7 @@ public class AutoTest {
 
     private static boolean networkUtilsCheck() {
         try {
-            Class<?> network = Class.forName("net.rain.rainjava.java.util.NetworkUtils");
+            Class<?> network = Class.forName("com.rosetta.remotedebugbridge.script.util.NetworkUtils");
             return Boolean.TRUE.equals(network.getMethod("isInitialized").invoke(null));
         } catch (Throwable t) {
             save("networkutils_error=" + t);

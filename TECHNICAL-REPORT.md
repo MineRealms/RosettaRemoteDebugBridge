@@ -1,8 +1,14 @@
-# RainJava 技术报告
+# RosettaRemoteDebugBridge 技术报告
 
-> 分析对象:**RainJava 1.0.0**(Forge 1.20.1 / Minecraft 1.20.1 / Java 17)
-> 依据:项目反编译源码、依赖 jar 的字节码级分析、运行时实测日志
+> 分析对象:**RosettaRemoteDebugBridge 1.0.0**(Forge 1.20.1 / Minecraft 1.20.1 / Java 17)
+> 上游来源:作者原始项目 RainJava 1.0.0(反编译还原后重构、重命名)
+> 依据:项目源码、依赖 jar 的字节码级分析、无人值守运行时实测
 > 报告定位:描述该 mod 的**系统设计、内部实现、脚本 API 与技术评估**
+
+**命名迁移说明**:本项目已整体重命名为 RosettaRemoteDebugBridge,命名空间
+`net.rain.*` → `com.rosetta.remotedebugbridge.*`,类前缀 `Rain*` → `Rosetta*`,
+modId `rainjava` → `rosetta_remote_debug_bridge`,运行时目录 `RainJava/` →
+`RosettaRemoteDebugBridge/`。报告正文中出现的 "RainJava" 均指上游原始版本。
 
 ---
 
@@ -615,6 +621,8 @@ Forge Server thread 触发 TickEvent.PlayerTickEvent
 | `command/RainJavaCommands.java`、`client/RainJavaClientEvents.java` | 命令链接修正 |
 | `java/ClassReplacementManager.java` | 明确"仅编译、运行期不生效"的警告;支持多 class 输出 |
 | `java/DynamicMixinLoader.java` | 处理器缺失时明确日志并终止本次尝试 |
+| `script/JavaSourceCompiler.java` | `CustomFileManager.hasLocation(SOURCE_PATH)` 与 `contains(...)`:修复 ECJ 编译单元磁盘兜底检查导致的 `File ... is missing`(原实现依赖脚本包名与运行目录大小写不敏感巧合) |
+| 全项目重命名 | `net.rain.*` → `com.rosetta.remotedebugbridge.*`;`Rain*` → `Rosetta*`;modId/目录/资源包/日志路径统一改为 rosetta |
 
 **验证**:`autotest/` 提供可复现的无人值守测试(quickPlay + 反射断言,见 §7)。
 最近一次运行结果:`PASS=1`——监听器重载稳定(`listeners_before/after=1`)、

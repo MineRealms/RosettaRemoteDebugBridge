@@ -1,0 +1,399 @@
+/*
+ * Decompiled with CFR 0.152.
+ * 
+ * Could not load the following classes:
+ *  net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
+ *  net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler
+ */
+package com.rosetta.remotedebugbridge.script;
+
+import java.io.File;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+import javax.tools.JavaCompiler;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import com.rosetta.remotedebugbridge.eventbus.RosettaEventSubscriber;
+import com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge;
+import com.rosetta.remotedebugbridge.core.ScriptType;
+import com.rosetta.remotedebugbridge.script.CompiledClass;
+import com.rosetta.remotedebugbridge.script.DynamicClassLoader;
+import com.rosetta.remotedebugbridge.script.JavaSourceCompiler;
+import com.rosetta.remotedebugbridge.script.helper.RuntimeModuleOpener;
+import com.rosetta.remotedebugbridge.script.transformer.McpToSrgTransformer;
+import com.rosetta.remotedebugbridge.script.utils.MinecraftHelper;
+import com.rosetta.remotedebugbridge.logging.RosettaLogger;
+import com.rosetta.remotedebugbridge.logging.ScriptErrorCollector;
+import net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler;
+
+public class JavaScriptLoader {
+    private final ScriptType scriptType;
+    private final RosettaLogger logger;
+    private final JavaSourceCompiler compiler;
+    private final DynamicClassLoader classLoader;
+    private final List<Class<?>> loadedClasses;
+    private final McpToSrgTransformer mcpTransformer;
+
+    public JavaScriptLoader(ScriptType scriptType) {
+        this.scriptType = scriptType;
+        this.logger = new RosettaLogger(scriptType);
+        RuntimeModuleOpener.openMixinModules();
+        EclipseCompiler systemCompiler = null;
+        try {
+            systemCompiler = new EclipseCompiler();
+            this.logger.info("Using Eclipse JDT compiler", new Object[0]);
+        }
+        catch (Exception e) {
+            this.logger.error("Failed to initialize Eclipse JDT compiler: {}", e.getMessage(), e);
+        }
+        if (systemCompiler == null) {
+            this.logger.error("No Java compiler available! Dynamic Java compilation is disabled.", new Object[0]);
+            this.compiler = null;
+            this.classLoader = null;
+            this.loadedClasses = new ArrayList();
+            this.mcpTransformer = null;
+            return;
+        }
+        try {
+            this.compiler = new JavaSourceCompiler((JavaCompiler)systemCompiler);
+            this.classLoader = new DynamicClassLoader(Thread.currentThread().getContextClassLoader());
+            this.loadedClasses = new ArrayList();
+            this.mcpTransformer = new McpToSrgTransformer();
+            this.logger.info("MCP to SRG transformer initialized", new Object[0]);
+            this.logger.info("Java script loader initialized for: {}", new Object[]{scriptType});
+        }
+        catch (Exception e) {
+            this.logger.error("Failed to initialize Java script loader: {}", e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void processMixins() {
+        if (!this.isAvailable()) {
+            return;
+        }
+        try {
+            Class<?> holder = Class.forName("org.spongepowered.rain.asm.mixin.transformer.MixinProcessorHolder");
+            Object available = holder.getMethod("isAvailable").invoke(null);
+            if (!Boolean.TRUE.equals(available)) {
+                this.logger.warn("Dynamic Mixin pipeline unavailable: the relocated Mixin service is not active in this environment (rosetta_remote_debug_bridge-core agent missing or disabled). Scripts and events are unaffected.");
+                return;
+            }
+            Path root = RosettaRemoteDebugBridge.getCore() != null ? RosettaRemoteDebugBridge.getCore().getRootPath() : null;
+            if (root == null) {
+                this.logger.warn("Dynamic Mixin pipeline skipped: RosettaRemoteDebugBridge core is not initialized");
+                return;
+            }
+            DynamicMixinLoader loader = new DynamicMixinLoader(this.compiler, this.classLoader, root);
+            loader.loadDynamicMixins();
+        }
+        catch (ClassNotFoundException e) {
+            this.logger.warn("Dynamic Mixin pipeline unavailable: relocated Mixin classes are missing from the runtime (rosetta_remote_debug_bridge-core not installed). Scripts and events are unaffected.");
+        }
+        catch (Throwable t) {
+            this.logger.error("Dynamic Mixin pipeline failed: {}", t.getMessage(), t);
+            ScriptErrorCollector.addFromThrowable(ScriptType.STARTUP, "mixins", t);
+        }
+    }
+
+    public void loadJavaScripts(Path directory) {
+        if (this.compiler == null) {
+            this.logger.warn("Compiler not available, skipping script loading", new Object[0]);
+            return;
+        }
+        if (!Files.exists(directory, new LinkOption[0])) {
+            this.logger.info("Scripts directory does not exist: {}", directory);
+            return;
+        }
+        ArrayList<Path> javaFiles = new ArrayList<Path>();
+        try (Stream<Path> paths = Files.walk(directory, new FileVisitOption[0]);){
+            paths.filter(path -> {
+                String p = path.toString();
+                boolean isMixin = p.contains("mixins" + File.separator) || p.contains("mixins/");
+                boolean isReplace = p.contains("replace" + File.separator) || p.contains("replace/");
+                return p.endsWith(".java") && !isMixin && !isReplace;
+            }).forEach(javaFiles::add);
+        }
+        catch (Exception e) {
+            this.logger.error("Failed to scan scripts directory {}: {}", directory, e.getMessage(), e);
+            ScriptErrorCollector.addFromThrowable(this.scriptType, directory.toString(), e);
+            return;
+        }
+        if (javaFiles.isEmpty()) {
+            this.logger.info("No Java script files found in {}", directory);
+            return;
+        }
+        javaFiles.sort(Comparator.comparing(path -> path.toAbsolutePath().normalize().toString()));
+        this.logger.info("Found {} file(s) to compile in {}", javaFiles.size(), directory);
+        int success = 0;
+        for (Path file : javaFiles) {
+            if (!this.loadJavaFileWithTransform(file)) continue;
+            ++success;
+        }
+        this.logger.info("Compiled {}/{} file(s) successfully", success, javaFiles.size());
+        if (!this.loadedClasses.isEmpty()) {
+            this.logger.info("Processing {} loaded class(es)...", this.loadedClasses.size());
+            this.processLoadedClasses();
+        }
+    }
+
+    private boolean loadJavaFileWithTransform(Path file) {
+        String fileName = file.getFileName().toString();
+        try {
+            CompiledClass compiled;
+            String source;
+            this.logger.info("Processing: {}", fileName);
+            Path absPath = this.resolveFilePath(file);
+            if (!Files.exists(absPath, new LinkOption[0])) {
+                this.logger.error("File not found: {}", absPath);
+                ScriptErrorCollector.addError(this.scriptType, "File not found: " + String.valueOf(absPath), fileName, -1L);
+                return false;
+            }
+            String originalSource = Files.readString(absPath);
+            if (MinecraftHelper.isSrgRuntime()) {
+                try {
+                    source = this.mcpTransformer.transformSource(originalSource, fileName);
+                }
+                catch (Exception e) {
+                    this.logger.warn("MCP->SRG transform failed for {}, using original source: {}", fileName, e.getMessage());
+                    source = originalSource;
+                }
+            }
+            else {
+                source = originalSource;
+            }
+            String className = this.extractClassName(source, fileName);
+            if (className == null || className.isBlank()) {
+                this.logger.error("Could not extract class name from: {}", fileName);
+                ScriptErrorCollector.addError(this.scriptType, "Could not extract class name", fileName, -1L);
+                return false;
+            }
+            this.logger.info("  Class: {}", className);
+            try {
+                compiled = this.compiler.compileFromString(className, source);
+            }
+            catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getName();
+                RosettaLogger.printCompilerOutput(this.scriptType, msg);
+                JavaScriptLoader.parseAndCollectErrors(this.scriptType, fileName, msg);
+                return false;
+            }
+            if (compiled == null || compiled.bytecode == null || compiled.bytecode.length == 0) {
+                this.logger.error("  Compilation produced no bytecode for: {}", className);
+                ScriptErrorCollector.addError(this.scriptType, "Compilation produced no bytecode", fileName, -1L);
+                return false;
+            }
+            if (compiled.allClasses != null) {
+                for (Map.Entry<String, byte[]> entry : compiled.allClasses.entrySet()) {
+                    this.classLoader.addCompiledClass(entry.getKey(), entry.getValue());
+                }
+            }
+            this.classLoader.addCompiledClass(compiled.className, compiled.bytecode);
+            Class<?> clazz = this.classLoader.loadClass(compiled.className);
+            this.loadedClasses.add(clazz);
+            this.logger.info("  Loaded: {}", compiled.className);
+            return true;
+        }
+        catch (Throwable t) {
+            this.logger.error("  FAIL: {}: {}", fileName, t.getMessage(), t);
+            ScriptErrorCollector.addFromThrowable(this.scriptType, fileName, t);
+            return false;
+        }
+    }
+
+    private static void parseAndCollectErrors(ScriptType type, String fileName, String compilerOutput) {
+        if (compilerOutput == null) {
+            ScriptErrorCollector.addError(type, "Unknown compilation error", fileName, -1L);
+            return;
+        }
+        String[] lines = compilerOutput.split("\n");
+        boolean found = false;
+        for (String line : lines) {
+            if (!(line = line.trim()).startsWith("Line ") || !line.contains(":")) continue;
+            try {
+                int colon = line.indexOf(58);
+                long lineNum = Long.parseLong(line.substring(5, colon).trim());
+                String msg = line.substring(colon + 1).trim();
+                ScriptErrorCollector.addError(type, msg, fileName, lineNum);
+                found = true;
+            }
+            catch (NumberFormatException ignored) {
+                ScriptErrorCollector.addError(type, line, fileName, -1L);
+                found = true;
+            }
+        }
+        if (!found) {
+            ScriptErrorCollector.addError(type, compilerOutput, fileName, -1L);
+        }
+    }
+
+    private void processLoadedClasses() {
+        for (Class<?> clazz : this.loadedClasses) {
+            this.processRosettaEventSubscriber(clazz);
+            try {
+                this.executeClass(clazz);
+            }
+            catch (Throwable t) {
+                this.logger.error("Failed to execute {}: {}", clazz.getName(), t.getMessage(), t);
+                ScriptErrorCollector.addFromThrowable(this.scriptType, clazz.getSimpleName() + ".java", t);
+            }
+        }
+    }
+
+    private void processRosettaEventSubscriber(Class<?> clazz) {
+        RosettaEventSubscriber annotation = clazz.getAnnotation(RosettaEventSubscriber.class);
+        if (annotation == null) {
+            return;
+        }
+        try {
+            RosettaRemoteDebugBridge.EVENT_BUS.register(clazz);
+            this.logger.info("@RosettaEventSubscriber registered: {} -> {} bus", clazz.getSimpleName(), annotation.bus().name());
+        }
+        catch (Throwable t) {
+            this.logger.error("Failed to register @RosettaEventSubscriber for {}: {}", clazz.getSimpleName(), t.getMessage(), t);
+            ScriptErrorCollector.addFromThrowable(this.scriptType, clazz.getSimpleName() + ".java", t);
+        }
+    }
+
+    private void executeClass(Class<?> clazz) {
+        try {
+            Method initMethod = this.findInitMethod(clazz);
+            if (initMethod != null) {
+                this.logger.info("Executing {}() in {}", initMethod.getName(), clazz.getSimpleName());
+                initMethod.invoke(null, new Object[0]);
+                return;
+            }
+            Method fmlMethod = this.findInitMethodWithFML(clazz);
+            if (fmlMethod != null) {
+                this.logger.info("Executing {}(FMLContext) in {}", fmlMethod.getName(), clazz.getSimpleName());
+                fmlMethod.invoke(null, FMLJavaModLoadingContext.get());
+                return;
+            }
+            if (!Modifier.isAbstract(clazz.getModifiers()) && !clazz.isInterface()) {
+                try {
+                    clazz.getDeclaredConstructor(new Class[0]).newInstance(new Object[0]);
+                    this.logger.info("Instantiated: {}", clazz.getSimpleName());
+                }
+                catch (NoSuchMethodException e) {
+                    this.logger.info("No init method or default constructor found in {}", clazz.getSimpleName());
+                }
+            }
+        }
+        catch (Throwable t) {
+            Throwable cause = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null ? t.getCause() : t;
+            this.logger.error("Error executing {}: {}", clazz.getName(), cause.getMessage(), cause);
+            ScriptErrorCollector.addFromThrowable(this.scriptType, clazz.getSimpleName() + ".java", t);
+        }
+    }
+
+    private Method findInitMethod(Class<?> clazz) {
+        for (String name : new String[]{"init", "initialize", "onLoad", "load", "register"}) {
+            try {
+                Method m = clazz.getDeclaredMethod(name, new Class[0]);
+                if (!Modifier.isStatic(m.getModifiers()) || !Modifier.isPublic(m.getModifiers()) || m.getParameterCount() != 0) continue;
+                return m;
+            }
+            catch (NoSuchMethodException noSuchMethodException) {
+                // empty catch block
+            }
+        }
+        return null;
+    }
+
+    private Method findInitMethodWithFML(Class<?> clazz) {
+        for (String name : new String[]{"init", "initialize", "onLoad", "load", "register"}) {
+            try {
+                Method m = clazz.getDeclaredMethod(name, FMLJavaModLoadingContext.class);
+                if (!Modifier.isStatic(m.getModifiers()) || !Modifier.isPublic(m.getModifiers())) continue;
+                return m;
+            }
+            catch (NoSuchMethodException noSuchMethodException) {
+                // empty catch block
+            }
+        }
+        return null;
+    }
+
+    private String extractClassName(String source, String fileName) {
+        try {
+            int semi;
+            String pkg = "";
+            String cls = "";
+            int pi = source.indexOf("package ");
+            if (pi != -1 && (semi = source.indexOf(59, pi)) > pi) {
+                pkg = source.substring(pi + 8, semi).trim();
+            }
+            for (String kw : new String[]{"public class ", "class ", "public interface ", "interface "}) {
+                int ci = source.indexOf(kw);
+                if (ci == -1) continue;
+                int si = ci + kw.length();
+                int end = source.length();
+                for (char stop : new char[]{' ', '{', '<', '\n', '\r'}) {
+                    int idx = source.indexOf(stop, si);
+                    if (idx <= si) continue;
+                    end = Math.min(end, idx);
+                }
+                cls = source.substring(si, end).trim();
+                break;
+            }
+            if (cls.isEmpty()) {
+                return fileName.endsWith(".java") ? fileName.substring(0, fileName.length() - 5) : fileName;
+            }
+            return pkg.isEmpty() ? cls : pkg + "." + cls;
+        }
+        catch (Exception e) {
+            return fileName.endsWith(".java") ? fileName.substring(0, fileName.length() - 5) : fileName;
+        }
+    }
+
+    private Path resolveFilePath(Path file) {
+        Path abs = file.toAbsolutePath().normalize();
+        if (Files.exists(abs, new LinkOption[0])) {
+            return abs;
+        }
+        try {
+            Path rel = Paths.get(".", new String[0]).toAbsolutePath().normalize().resolve(file).normalize();
+            if (Files.exists(rel, new LinkOption[0])) {
+                return rel;
+            }
+        }
+        catch (Exception exception) {
+            // empty catch block
+        }
+        return abs;
+    }
+
+    public List<Class<?>> getLoadedClasses() {
+        return new ArrayList(this.loadedClasses);
+    }
+
+    public boolean isAvailable() {
+        return this.compiler != null;
+    }
+
+    public JavaSourceCompiler getCompiler() {
+        return this.compiler;
+    }
+
+    public DynamicClassLoader getClassLoader() {
+        return this.classLoader;
+    }
+
+    public McpToSrgTransformer getMcpTransformer() {
+        return this.mcpTransformer;
+    }
+
+    public RosettaLogger getLogger() {
+        return this.logger;
+    }
+}
+
