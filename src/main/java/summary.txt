@@ -1,0 +1,9 @@
+Summary for H:\MinecraftMods\rain_java-1.0.0-all.jar
+Decompiled with CFR 0.152
+
+
+cpw.mods.modlauncher.MixinCore.MixinInfoInjector
+----------------------------
+
+getMixinClassNode(org.spongepowered.asm.service.IClassBytecodeProvider java.lang.String boolean int )
+  Unable to fully structure code

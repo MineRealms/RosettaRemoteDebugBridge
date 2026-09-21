@@ -1,0 +1,30 @@
+# Gradle
+build/
+.gradle/
+mcmodsrepo/
+
+# Forge run directories
+run/
+run-data/
+runs/
+src/generated/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+bin/
+
+# OS / misc
+Thumbs.db
+Desktop.ini
+*.log
+
+# Local tooling output
+*.hprof
+crash-*.txt
