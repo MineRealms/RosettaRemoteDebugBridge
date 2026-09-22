@@ -1,8 +1,8 @@
-# RosettaNexus 使用手册（`rosetta_remote_debug_bridge`）
+# RosettaRemoteDebugBridge 使用手册（`rosetta_remote_debug_bridge`）
 
-> 适用产物：`rosetta_remote_debug_bridge-1.0.0.jar`（Forge 1.20.1 单产物：静态 Mixin + Bukkit 适配 + 远程控制面）
-> 配套文档：`IMPLEMENTATION-PLAN.md`（§7 P5）、`FUSION-ANALYSIS.md`、`P0`~`P5-VERIFICATION.md`
-> 状态（P5）：默认端口已统一为 **48790**（原 48791 废弃）；旧 `RosettaRemote` 插件桥退役，jar 备份于 `plugins-disabled/`。
+> 适用产物：`rosetta_remote_debug_bridge-1.0.0.jar`（Forge 1.20.1 单产物：脚本引擎 + 静态 Mixin + Bukkit 适配 + 远程控制面）
+> 配套文档：[README](../README.md) · [技术手册](ARCHITECTURE.md) · [测试与验收](TESTING.md)
+> 状态：默认端口 **48790**；旧 `RosettaRemote` 插件桥已退役（jar 备份于 `plugins-disabled/`）。
 
 ---
 
@@ -343,7 +343,7 @@ $ ... coder {"action":"api","method":"getMinecraftVersion"}
 
 ---
 
-## 6. 已知坑（P0-P5 实战记录）
+## 6. 已知坑与规避
 
 | # | 坑 | 现象 | 处理 |
 |---|---|---|---|
@@ -360,15 +360,20 @@ $ ... coder {"action":"api","method":"getMinecraftVersion"}
 
 ---
 
-## 7. 验收索引
+## 7. 验收记录摘要
 
-| 阶段 | 文档 | 一句话结论 |
+| 环境 | 检查项 | 结果 |
 |---|---|---|
-| P0 | `P0-VERIFICATION.md` | 4/4：mod 能在 Mohist 加载，可见并注册 Bukkit 监听/命令（融合方案成立）。 |
-| P1+P2 | `P1P2-VERIFICATION.md` | 10/10：远程 `ping/exec`（ECJ 无 JDK）与 Bukkit 适配、插件热更新全部实测通过。 |
-| P3 | `P3-VERIFICATION.md` | 4/4：脚本三阶段、reload 清理、命令覆盖与 CoderAdapter 实测通过。 |
-| P4 | `P4-VERIFICATION.md` | 3/3：静态 Mixin apply/触发、数据包注入实测通过。 |
-| P5 | `P5-VERIFICATION.md` | 端口统一 48790、旧插件退役、无 Bukkit 路径审查 + 降级确认、全量回归通过。 |
+| Forge dev（无人值守） | quickPlay 自动化回归（编译/热重载/错误收集/网络/自动退出） | PASS |
+| Mohist 实机 | 桥监听与 `ping` / `console` / `exec`（ECJ 无 JDK） | 通过 |
+| Mohist 实机 | Bukkit 适配、监听器与命令注册、自检链路 | 通过 |
+| Mohist 实机 | 脚本三阶段、reload 按 ClassLoader 清理 | 通过 |
+| Mohist 实机 | 静态 Mixin（`Chicken.aiStep`）注入并触发 | 通过 |
+| Mohist 实机 | 数据包注入（谓词生效） | 通过 |
+| Mohist 实机 | 插件热更新（ForgeKit）、CoderAdapter API 调用 | 通过 |
+| Mohist 实机 | 端口统一 48790、旧插件退役、全量回归 | 通过 |
+
+完整测试方法、证据与边界见 [TESTING.md](TESTING.md)。
 
 ### 回滚（恢复旧插件）
 
