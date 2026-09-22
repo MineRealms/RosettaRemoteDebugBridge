@@ -3,6 +3,7 @@ plugins {
     id 'idea'
     id 'maven-publish'
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'org.spongepowered.mixin' version '0.7.38'
 }
 
 version = mod_version
@@ -58,6 +59,14 @@ minecraft {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+// Static Mixin support: the annotation processor emits the refmap consumed by the
+// Mixin service at runtime, and `config`/`add` register the config in the jar
+// manifest (MixinConfigs) and package the refmap into the mod resources.
+mixin {
+    add sourceSets.main, 'rosetta_remote_debug_bridge.refmap.json'
+    config 'rosetta_remote_debug_bridge.mixins.json'
+}
+
 // Minimal compile-only stubs for the Bukkit types referenced by the public NexusTask
 // interface (exec task contract). They are NEVER packaged into the mod jar: the bukkitStubs
 // source set is only added to the main compile classpath, so on a real Mohist/Bukkit server
@@ -74,6 +83,11 @@ repositories {
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // Static (@Mixin) annotations + the refmap annotation processor. Both are
+    // compile-time only: at runtime the standard Mixin 0.8.5 bundled by Forge
+    // performs the transformation.
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
     // RainAPI repack (ECJ compiler + JavaParser, relocated under net.rain.repack)
     // and relocated Mixin fork (org.spongepowered.rain.asm).
