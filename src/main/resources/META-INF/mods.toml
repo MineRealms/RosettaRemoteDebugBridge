@@ -8,6 +8,8 @@ version="1.0.0"
 displayName="RosettaRemoteDebugBridge"
 authors="Rain"
 description='''Runtime Java compiler with Mixin injection and ASM transformation support'''
+# Server-side only: clients without this mod may join (no mod-list handshake check).
+displayTest="IGNORE_ALL_VERSION"
 
 [[dependencies.rosetta_remote_debug_bridge]]
     modId="forge"
