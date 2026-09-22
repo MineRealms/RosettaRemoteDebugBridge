@@ -58,6 +58,14 @@ minecraft {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+// Minimal compile-only stubs for the Bukkit types referenced by the public NexusTask
+// interface (exec task contract). They are NEVER packaged into the mod jar: the bukkitStubs
+// source set is only added to the main compile classpath, so on a real Mohist/Bukkit server
+// the runtime resolves the genuine org.bukkit classes supplied by the server.
+sourceSets {
+    bukkitStubs
+}
+
 repositories {
     flatDir {
         dir 'libs'
@@ -73,6 +81,7 @@ dependencies {
     // part of the mod module in both dev runs and the built jar.
     compileOnly files('libs/rainapi-repack-1.0.2.jar')
     compileOnly files('libs/mixin-0.8.5-dev.jar')
+    compileOnly sourceSets.bukkitStubs.output
 }
 
 tasks.named('processResources', ProcessResources).configure {
