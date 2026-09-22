@@ -133,13 +133,14 @@ public class RosettaCore {
                 logger.info("Unregistered {} event listener(s) from previous {} script classes", removed, type);
             }
             try {
-                int bukkitRemoved = com.rosetta.remotedebugbridge.net.BukkitAdapter.cleanupClassLoader(previous.getClassLoader());
-                if (bukkitRemoved > 0) {
-                    logger.info("Unregistered {} Bukkit listener(s) from previous {} script classes", bukkitRemoved, type);
+                int[] bukkitRemoved = com.rosetta.remotedebugbridge.net.BukkitAdapter.cleanupClassLoader(previous.getClassLoader());
+                if (bukkitRemoved[0] > 0 || bukkitRemoved[1] > 0) {
+                    logger.info("Unregistered {} Bukkit listener(s) and {} command(s) from previous {} script classes",
+                            bukkitRemoved[0], bukkitRemoved[1], type);
                 }
             }
             catch (Throwable t) {
-                logger.warn("Bukkit listener cleanup failed for {}: {}", type, t.toString());
+                logger.warn("Bukkit cleanup failed for {}: {}", type, t.toString());
             }
         }
         this.loadedFlags.put(type, false);
