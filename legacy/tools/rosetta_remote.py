@@ -120,6 +120,22 @@ def run_once(session, argv):
         elif len(rest) > 2:
             payload["args"] = json.loads(rest[2])
         print_result(call(**session, cmd="reflect", args=payload))
+    elif cmd == "listener":
+        action = rest[0] if rest else "status"
+        payload = {"action": action}
+        if len(rest) > 1:
+            payload["name"] = rest[1]
+        print_result(call(**session, cmd="listener", args=payload))
+    elif cmd == "coder":
+        action = rest[0] if rest else "list"
+        payload = {"action": action}
+        if len(rest) > 1:
+            payload["method"] = rest[1]
+        if action == "run" and len(rest) > 1:
+            payload["file"] = rest[1]
+        if action == "api" and len(rest) > 2:
+            payload["args"] = rest[2:]
+        print_result(call(**session, cmd="coder", args=payload))
     elif cmd == "shell":
         interactive(session)
     else:

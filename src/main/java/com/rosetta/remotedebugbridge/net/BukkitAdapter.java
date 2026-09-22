@@ -72,7 +72,11 @@ public final class BukkitAdapter {
             Object owner = ownerPlugin();
             String ownerName = owner == null ? "none" : String.valueOf(Reflect.call(owner, "getName"));
             LOGGER.info("Bukkit runtime detected - adapter active (owner plugin: {})", ownerName);
-            registerSelfCheckListener();
+            if (Boolean.getBoolean("rosetta.nexus.selfcheck")) {
+                registerSelfCheckListener();
+            } else {
+                LOGGER.info("Self-check listener disabled by default (-Drosetta.nexus.selfcheck=true to enable)");
+            }
             return "active owner=" + ownerName;
         } catch (Throwable error) {
             LOGGER.warn("Bukkit adapter init failed (bridge stays up): {}", error.toString());
