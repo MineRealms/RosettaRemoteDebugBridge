@@ -1,0 +1,23 @@
+# RosettaRemote - 远程调试桥
+# 客户端: tools/rosetta_remote.py
+#
+# 安全须知:
+#  - token 必须保密（首次启动会自动生成并写回本文件，控制台会打印）
+#  - 这个插件可以在服务器上执行任意代码/加载任意 jar，调试完请卸载删掉
+#  - 公网服务器务必: 只开放给管理 IP（allow-ips）或走 SSH 隧道，切勿裸奔
+
+# 监听地址与端口（0.0.0.0 = 所有网卡；也可改 127.0.0.1 配合 SSH 隧道）
+bind: 0.0.0.0
+port: 48790
+
+# 访问令牌（留空则首次启动自动生成随机令牌并写入这里）
+token: ''
+
+# 仅允许这些来源 IP 连接（空列表 = 不限制）
+allow-ips: []
+
+# 是否允许 exec（运行时编译并执行 Java 代码）
+allow-code-exec: true
+
+# 是否允许 upload/read 访问服务器根目录以外的路径
+allow-path-escape: false

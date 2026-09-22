@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.rosetta'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://hub.spigotmc.org/nexus/content/groups/public/' }
+}
+
+dependencies {
+    compileOnly 'org.spigotmc:spigot-api:1.20.1-R0.1-SNAPSHOT'
+    compileOnly 'net.kyori:adventure-api:4.14.0'
+    compileOnly 'org.apache.maven:maven-artifact:3.8.6'
+    compileOnly files('../projects/mohist/build/libs/mohist-1.20.1-47.4.13-universal.jar')
+    compileOnly files('../projects/mohist/run/libraries/net/minecraft/server/1.20.1-20230612.114412/server-1.20.1-20230612.114412-srg.jar')
+    compileOnly fileTree('../projects/mohist/run/libraries') {
+        include 'com/mohistmc/eventbus/**/*.jar'
+        include 'net/minecraftforge/eventbus/**/*.jar'
+        include 'net/minecraftforge/fmlcore/**/*.jar'
+        include 'net/minecraftforge/fmlloader/**/*.jar'
+        include 'net/minecraftforge/forgespi/**/*.jar'
+        include 'net/minecraftforge/forge/**/*.jar'
+    }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    archiveBaseName = 'ForgeKit'
+    archiveVersion = ''
+}

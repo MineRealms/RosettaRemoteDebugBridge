@@ -1,0 +1,16 @@
+name: PortalProbe
+version: 0.2.0
+main: com.rosetta.probe.PortalProbePlugin
+api-version: '1.20'
+authors: [Rosetta]
+description: Nether portal / dimension travel diagnostics for Mohist (Bukkit + Forge hooks)
+commands:
+  portalprobe:
+    description: Portal diagnostics toolkit
+    usage: /portalprobe help
+    aliases: [pprobe, pp]
+    permission: portalprobe.admin
+permissions:
+  portalprobe.admin:
+    description: access to /portalprobe
+    default: op

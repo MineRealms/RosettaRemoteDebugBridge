@@ -1,0 +1,42 @@
+# PortalProbe - 诊断"进地狱门没反应/传不过去"
+# 日志文件: plugins/PortalProbe/portal-probe.log (UTF-8, 同时打一份到控制台)
+# 常用命令:
+#   /portalprobe status            当前状态 + 世界列表 + 谁正站在门里
+#   /portalprobe listeners         列出所有监听传送门/传送事件的插件（找"谁取消了"）
+#   /portalprobe check [玩家]      快照 + 只读的"目的地预检"（不建门）
+#   /portalprobe diagnose [玩家]   status + listeners + check
+#   /portalprobe trace <玩家> [秒] 逐 tick 记录该玩家状态
+#   /portalprobe scan              列出当前站在门里的玩家
+
+# ---- Bukkit 事件 ----
+# PlayerPortalEvent / PlayerTeleportEvent / PlayerChangedWorldEvent / PortalCreateEvent
+# 每个都按 LOWEST + MONITOR 双优先级记录：LOWEST 没取消、MONITOR 取消了，就是插件干的
+bukkit-events: true
+
+# ---- Forge 事件 ----
+# EntityTravelToDimensionEvent(LOWEST/MONITOR, MONITOR 含已取消) + PlayerChangedDimensionEvent
+# cancelled=true 说明是 mod / Forge 钩子拦了维度旅行
+forge-events: true
+
+# 记录所有普通传送（false = 只记 NETHER_PORTAL / END_PORTAL 这类传送门传送）
+log-all-teleports: false
+
+# ---- 自动看守（推荐开启）----
+# 每隔 interval-ticks 扫描在线玩家：谁进了门、站了多久、有没有静默失败
+watch-enabled: true
+watch-interval-ticks: 10
+
+# 站在门里累计超过这么多 tick 还没有任何传送事件 -> 打 SILENT PORTAL FAILURE（含完整诊断）
+silent-failure-ticks: 100
+
+# 站门里多少 tick 后开始做"只读目的地预检"（缩放坐标 -> 目标维度 -> findPortalAround）
+precheck-after-ticks: 40
+
+# 预检的重复间隔（tick）。6000 = 5 分钟，避免刷屏
+precheck-every-ticks: 6000
+
+# /portalprobe trace 默认持续时间（秒）
+trace-seconds: 15
+
+# 无头自测（搭门+放僵尸检查是否到 DIM-1）。生产环境建议 false，需要时手动 /portalprobe nethertest
+auto-nether-test: false

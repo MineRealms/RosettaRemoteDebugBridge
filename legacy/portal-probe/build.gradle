@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.rosetta'
+version = '0.2.0'
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://hub.spigotmc.org/nexus/content/groups/public/' }
+    maven { url = 'https://oss.sonatype.org/content/repositories/snapshots/' }
+}
+
+def eventbusJars = fileTree('../projects/mohist/run/libraries') {
+    include 'com/mohistmc/eventbus/**/*.jar'
+    include 'net/minecraftforge/eventbus/**/*.jar'
+}
+
+dependencies {
+    compileOnly 'org.spigotmc:spigot-api:1.20.1-R0.1-SNAPSHOT'
+    compileOnly 'net.kyori:adventure-api:4.14.0'
+    compileOnly 'net.kyori:adventure-key:4.14.0'
+    compileOnly 'net.kyori:examination-api:1.3.0'
+    compileOnly files('../projects/mohist/build/libs/mohist-1.20.1-47.4.13-universal.jar')
+    compileOnly files('../projects/mohist/run/libraries/net/minecraft/server/1.20.1-20230612.114412/server-1.20.1-20230612.114412-srg.jar')
+    compileOnly eventbusJars
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    archiveBaseName = 'PortalProbe'
+    archiveVersion = ''
+}
