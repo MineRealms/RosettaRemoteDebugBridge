@@ -28,3 +28,7 @@ Desktop.ini
 # Local tooling output
 *.hprof
 crash-*.txt
+
+# Python
+__pycache__/
+*.pyc

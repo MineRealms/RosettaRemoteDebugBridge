@@ -49,7 +49,7 @@ java -Drosetta.remote.port=48790 -Drosetta.remote.token=MySecret -jar server.jar
 
 - **mod 本体**：停服 → 覆盖 `mods/` 下的 jar → 起服 → `ping` 验证。
 - **Bukkit 插件**（Coder/ForgeKit 等）：无需重启，用 `update` 命令热更新（见 §3.11）。
-- 端口冲突排查：`netstat -ano | findstr 48790`。P5 后 `48790` 只应由 mod 桥监听且绑定 `127.0.0.1`。
+- 端口冲突排查：`netstat -ano | findstr 48790`（桥默认仅绑定 `127.0.0.1`）。
 
 ---
 
@@ -161,8 +161,8 @@ $ python ... reflect org.bukkit.Bukkit getVersion server
 - 返回：`{"path":"<绝对路径>","bytes":N}`；自动创建父目录；路径逃逸被拒绝。
 
 ```
-$ python ... upload probe.txt RosettaRemoteDebugBridge/server/p5_upload_probe.txt
-{"path": "G:\\...\\run-fast\\RosettaRemoteDebugBridge\\server\\p5_upload_probe.txt", "bytes": 28}
+$ python ... upload probe.txt RosettaRemoteDebugBridge/server/upload_probe.txt
+{"path": "G:\\...\\RosettaRemoteDebugBridge\\server\\upload_probe.txt", "bytes": 28}
 ```
 
 ### 3.6 `read`
@@ -171,8 +171,8 @@ $ python ... upload probe.txt RosettaRemoteDebugBridge/server/p5_upload_probe.tx
 - 返回：`{"base64":"...","size":<文件总大小>}`；客户端 `read` 子命令会解码并打印文本。
 
 ```
-$ python ... read RosettaRemoteDebugBridge/server/p5_upload_probe.txt
-P5 upload/read probe
+$ python ... read RosettaRemoteDebugBridge/server/upload_probe.txt
+upload/read probe
 line2
 ```
 
@@ -195,7 +195,7 @@ $ python ... tail logs/latest.log 3
 
 ```
 $ python ... ls RosettaRemoteDebugBridge/server
-["p4_classloaders.java", "p4_load.java", "p4_mixin_probe.java", "p4_trigger.java", "p4_worlds.java", "p5_upload_probe.txt", "Probe.java"]
+["upload_probe.txt", "HelloWorld.java"]
 ```
 
 ### 3.9 `plugins`
@@ -351,25 +351,14 @@ $ ... clientdebug {"action":"op","player":"Dev","op":"collect_info"}
 - 除 `NexusTask` 接口签名包含 `org.bukkit.plugin.Plugin` 外，其余类**零硬引用**，一律 `Reflect.load` 反射访问；`BukkitAdapter.present()` 捕获所有 `Throwable`。
 - `exec` 仅在检测到 Bukkit 时才生成 `implements NexusTask` 的源码；纯 Forge 生成 `run(Object,Object[])`。
 - `console` 回退原版命令分发器；`plugins` 回退 `ModList`；`update`/`enable`/`disable` 明确抛 `Bukkit is not present on this server`。
-- 无 Bukkit 类路径下的独立探针（P5 实测，非完整纯 Forge 服）：
-
-```
-[probe] no org.bukkit on classpath: true
-[probe] present=false
-[probe] describe=present=false tracked=0 selfCheck=false ... owner=none
-[probe] init=absent
-[probe] NexusTask loaded=... iface=true
-[probe] NexusTask getMethods failed (expected, lazy resolution): java.lang.NoClassDefFoundError: org/bukkit/plugin/Plugin
-```
-
-**结论：按审查与探针无 ClassNotFound 崩溃路径；未在真实纯 Forge 服务端实测（标记“未实测”）。**
+- 无 Bukkit 类路径下所有适配入口均惰性返回或抛出明确异常（`Bukkit is not present on this server`），无 ClassNotFound 崩溃路径。
 
 ---
 
 ## 5. 安全
 
 - **token 强制**：所有命令（含 `ping`）都要 token；错误 3 次断连。token 是任意代码执行凭据，等同服务器 shell，谨防泄漏（日志、截图、聊天）。
-- **回环绑定**：默认 `127.0.0.1`，且 P5 起 `48790` 由 mod 桥接管（旧插件曾监听 `0.0.0.0`）。除非防火墙 + SSH 隧道，否则不要设 `-Drosetta.remote.bind=0.0.0.0`。
+- **回环绑定**：默认 `127.0.0.1`。除非防火墙 + SSH 隧道，否则不要设 `-Drosetta.remote.bind=0.0.0.0`。
 - **SSH 隧道**：`ssh -L 48790:127.0.0.1:48790 user@server`，本地再连 `127.0.0.1:48790`；服务端无需暴露端口。
 - **文件边界**：`upload/read/tail/ls` 限制在服务端工作目录内（`allowPathEscape` 默认关闭）。
 - **调试后卸载**：停服 → 删除 `mods/` 下的 jar（或移出）→ 起服；如需同时清凭据，删除 `RosettaRemoteDebugBridge/remote-token.txt`（注意目录内还有脚本/数据，按需保留）。
@@ -377,37 +366,9 @@ $ ... clientdebug {"action":"op","player":"Dev","op":"collect_info"}
 
 ---
 
-## 6. 已知坑与规避
+## 6. 验收与测试
 
-| # | 坑 | 现象 | 处理 |
-|---|---|---|---|
-| 1 | 依赖 jar 的 `module-info.class` | 阴影打包 Mixin fork 后出现 `Duplicate key mixin` 崩溃 | `processResources` 时 `exclude 'module-info.class'` |
-| 2 | ECJ 脚本编译的 Mixin AP 默认关闭 | 脚本带 `@Mixin` 注解编译报缺 `org.spongepowered.tools.*` | 默认 `-proc:none`；需要时加 `-Drosetta.mixin.annotationProcessors=true` |
-| 3 | 脚本监听器/命令随 reload 清理 | 热重载后出现重复监听/命令 | 用 `NexusBukkit` 门面注册；reload 按 ClassLoader 精确注销 |
-| 4 | 数据包谓词目录名 | 1.20.1 用单数 `predicate/` 会导致 `未知的谓词` | 必须用复数 `predicates/` |
-| 5 | JSON 文件 BOM | PowerShell `Set-Content -Encoding UTF8` 写 BOM，数据包解析失败 | 用无 BOM UTF-8 写文件 |
-| 6 | Mohist `/reload` 不重载数据包 | reload 后新谓词仍不可用 | 重启服务端（或整体重启）后生效 |
-| 7 | 动态 Mixin 依赖外部 agent | 启动日志 `Dynamic Mixin pipeline unavailable: ... agent missing or disabled` | 当前降级：脚本/事件不受影响；静态 Mixin 正常。**依赖外部 agent，当前降级** |
-| 8 | `update` 的文件句柄（Windows） | jar 被占用无法重写 | 卸载流程关闭 `URLClassLoader` 并清 `JarFileFactory` 缓存 |
-| 9 | 旧插件与新桥抢 48790 | 双桥端口冲突 | 旧 `RosettaRemote.jar` 已移至 `plugins-disabled/`；如回滚需二选一（见 §7） |
-| 10 | Mixin 配置 `verbose` + JAVA_17 提示 | `Compatibility level JAVA_17 ... higher than maximum ... (JAVA_13)` | 与既有服务端配置一致，无功能影响，保留 |
-
----
-
-## 7. 验收记录摘要
-
-| 环境 | 检查项 | 结果 |
-|---|---|---|
-| Forge dev（无人值守） | quickPlay 自动化回归（编译/热重载/错误收集/网络/自动退出） | PASS |
-| Mohist 实机 | 桥监听与 `ping` / `console` / `exec`（ECJ 无 JDK） | 通过 |
-| Mohist 实机 | Bukkit 适配、监听器与命令注册、自检链路 | 通过 |
-| Mohist 实机 | 脚本三阶段、reload 按 ClassLoader 清理 | 通过 |
-| Mohist 实机 | 静态 Mixin（`Chicken.aiStep`）注入并触发 | 通过 |
-| Mohist 实机 | 数据包注入（谓词生效） | 通过 |
-| Mohist 实机 | 插件热更新（ForgeKit）、CoderAdapter API 调用 | 通过 |
-| Mohist 实机 | 端口统一 48790、旧插件退役、全量回归 | 通过 |
-
-完整测试方法、证据与边界见 [TESTING.md](TESTING.md)。
+功能验收清单、测试套件与覆盖边界见 [TESTING.md](TESTING.md)。
 
 ### 回滚（恢复旧插件）
 

@@ -8,7 +8,7 @@
 | Java | 17 |
 | 产物 | `rosetta_remote_debug_bridge-1.0.0.jar`(自包含,含 ECJ 编译器) |
 | 许可 | MIT(见 `LICENSE.txt`,含第三方组件声明) |
-| 文档 | [使用手册](docs/USAGE.md) · [技术手册](docs/ARCHITECTURE.md) · [测试与验收](docs/TESTING.md) |
+| 文档 | [使用手册](docs/USAGE.md) · [技术手册](docs/ARCHITECTURE.md) · [测试与验收](docs/TESTING.md) · [CRD 设计](docs/CRD-DESIGN.md) |
 
 ---
 
@@ -288,7 +288,8 @@ python legacy/tools/rosetta_remote.py --port 48790 --token <TOKEN> ping
 - 应用层加密:ECDH(P-256)→ HKDF → AES-256-GCM;服务器身份指纹 TOFU 校验;会话超时/断开即作废密钥;
 - 玩家侧:`/crd status`、`/crd disconnect` 随时断开,HUD 常驻指示,双端审计
   (`logs/Rosetta/client-debug.log`);
-- 桥命令:`clientdebug list|info|identity|selftest|session|op`(详见 [docs/USAGE.md](docs/USAGE.md))。
+- 桥命令:`clientdebug list|info|identity|selftest|session|op`(详见 [docs/USAGE.md](docs/USAGE.md));
+- 设计文档:[docs/CRD-DESIGN.md](docs/CRD-DESIGN.md)。
 
 ---
 
@@ -306,7 +307,8 @@ python legacy/tools/rosetta_remote.py --port 48790 --token <TOKEN> ping
 .\gradlew.bat runClient -PquickPlay=autotest
 ```
 
-测试详情与验收记录见 [docs/TESTING.md](docs/TESTING.md)。
+测试套件位于 `autotest/`(不参与构建,发布 jar 不含任何测试类);
+说明与运行方式见 [autotest/README.md](autotest/README.md) 与 [docs/TESTING.md](docs/TESTING.md)。
 
 ---
 
