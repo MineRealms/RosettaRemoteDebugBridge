@@ -290,9 +290,11 @@ public final class RemoteBridge {
                 return update(require(args, "name"), require(args, "path"), require(args, "base64"));
             case "listener":
                 return listener(args.has("action") ? args.get("action").getAsString() : "status");
+            case "coder":
+                return coder(args);
             default:
                 throw new IllegalArgumentException("unknown cmd: " + cmd
-                        + " (try: ping, console, exec, reflect, upload, read, tail, ls, plugins, enable, disable, update, listener)");
+                        + " (try: ping, console, exec, reflect, upload, read, tail, ls, plugins, enable, disable, update, listener, coder)");
         }
     }
 
@@ -674,9 +676,60 @@ public final class RemoteBridge {
                 out.addProperty("removed", removed);
                 out.addProperty("status", BukkitAdapter.describe());
             }
-            default -> throw new IllegalArgumentException("action must be status|cleanup");
+            case "restore" -> out.addProperty("status", onServerThread(BukkitAdapter::restoreSelfCheck, 30_000L));
+            default -> throw new IllegalArgumentException("action must be status|cleanup|restore");
         }
         return out;
+    }
+
+    // ------------------------------------------------------------------ coder
+
+    /**
+     * Coder plugin adapter:
+     *   {"action":"list"}                                    - CoderAPI method count / version
+     *   {"action":"api","method":"getMinecraftVersion"}      - cross-loader reflective call
+     *   {"action":"run","file":"smoke.java"}                 - console-dispatched coderc run/compile
+     */
+    private JsonElement coder(JsonObject args) throws Throwable {
+        String action = args.has("action") ? args.get("action").getAsString() : "list";
+        switch (action) {
+            case "list":
+                return onServerThread(CoderAdapter::list, 30_000L);
+            case "api": {
+                String method = require(args, "method");
+                JsonArray input = args.has("args") && args.get("args").isJsonArray()
+                        ? args.getAsJsonArray("args") : new JsonArray();
+                return onServerThread(() -> CoderAdapter.invoke(method, input), 30_000L);
+            }
+            case "run":
+                return coderRun(require(args, "file"));
+            default:
+                throw new IllegalArgumentException("action must be list|api|run");
+        }
+    }
+
+    private JsonObject coderRun(String file) throws Throwable {
+        String name = file.endsWith(".java") ? file.substring(0, file.length() - ".java".length()) : file;
+        JsonArray commands = new JsonArray();
+        StringBuilder output = new StringBuilder();
+        String runCommand = "coderc run " + name;
+        commands.add(runCommand);
+        JsonObject run = console(runCommand);
+        output.append(text(run, "output"));
+        if (output.toString().contains("Class not found")) {
+            String compileCommand = "coderc compile " + file;
+            commands.add(compileCommand);
+            JsonObject compile = console(compileCommand);
+            output.append(text(compile, "output"));
+        }
+        JsonObject out = new JsonObject();
+        out.add("commands", commands);
+        out.addProperty("output", output.toString());
+        return out;
+    }
+
+    private static String text(JsonObject object, String key) {
+        return object.has(key) && !object.get(key).isJsonNull() ? object.get(key).getAsString() : "";
     }
 
     // ------------------------------------------------------------------ helpers
