@@ -1,0 +1,12 @@
+# TEST-MODE CRD client config (copy over <gamedir>/RosettaRemoteDebugBridge/client-debug.toml)
+#
+# Development/testing only - NEVER ship this file. The production default is:
+#   allowRemoteDebug = false
+#
+# SCRIPT notes: eval_client_script always pops a per-use confirmation screen on the
+# client, even here (automated runs can only verify that the call is blocked by it).
+
+allowRemoteDebug = true
+requireConfirmPerSession = false
+maxPermission = "SCRIPT"
+sessionTimeoutMinutes = 30

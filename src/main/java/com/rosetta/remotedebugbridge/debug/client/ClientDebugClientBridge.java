@@ -86,6 +86,9 @@ public final class ClientDebugClientBridge implements ClientDebugHooks {
         ClientDebugHud.set(active, summary);
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.execute(() -> {
+            if (!active && minecraft.screen instanceof ClientDebugConfirmScreen) {
+                minecraft.setScreen(null);
+            }
             if (minecraft.player != null) {
                 minecraft.player.displayClientMessage(Component.literal(summary), false);
             }

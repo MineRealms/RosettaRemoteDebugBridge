@@ -138,3 +138,43 @@ PASS=1
 | `legacy/tools/rosetta_remote.py` | Python 客户端(默认端口 48790,支持 `ROSETTA_REMOTE_HOST/PORT/TOKEN`) |
 | `legacy/tools/dump_file_hashes.ps1` | 目录文件哈希对照(mods 跨机 diff) |
 | `legacy/tools/find_module_conflict.ps1` | 排查 JPMS 重复模块提供者导致的 ModLauncher ResolutionException |
+
+---
+
+## 6. CRD(客户端远程调试)测试
+
+### 6.1 测试模式配置
+
+复制 `autotest/crd/client-debug.test.toml` 到 `<gamedir>/RosettaRemoteDebugBridge/client-debug.toml`:
+
+```
+allowRemoteDebug = true
+requireConfirmPerSession = false
+maxPermission = "SCRIPT"
+sessionTimeoutMinutes = 30
+```
+
+- 该文件仅用于测试环境;**生产默认 `allowRemoteDebug=false`**(由 mod 自动生成);
+- SCRIPT 的逐次确认在测试模式下同样保留(自动化只能验证"被 UI 阻塞")。
+
+### 6.2 测试脚本
+
+| 脚本 | 覆盖 |
+|---|---|
+| `autotest/crd/crd_e2e.py` | 16 项:握手 list、开/关会话、`collect_info`、`tail_log`、`resource_reload`、ACTION(screenshot/clear_chat)、白名单拒绝、SCRIPT 权限拒绝、会话清理、客户端审计 |
+| `autotest/crd/crd_script_gate.py` | 5 项:SCRIPT 会话、`eval_client_script` 被确认屏阻塞(socket 超时)、挂起期间 ACTION 截图取证、`pendingRequests>=1`、关会话 |
+
+运行(Mohist 服务端 + `gradlew runClient -PquickJoin=<host:port>` 客户端):
+
+```
+python autotest/crd/crd_e2e.py --token <TOKEN> --player Dev
+python autotest/crd/crd_script_gate.py --token <TOKEN> --player Dev
+```
+
+### 6.3 最近结果
+
+- `crd_e2e.py`:**16 passed / 0 failed**(1.2s);截图落盘 `run/screenshots/`,客户端审计
+  `logs/Rosetta/client-debug.log` 有对应条目;
+- `crd_script_gate.py`:**5 passed / 0 failed**(SCRIPT 调用被确认屏阻塞,`pendingRequests=1`);
+- 加密自检:`CrdCrypto.selfTest()` 独立验证 → `cryptoRoundtrip=true`;
+- 边界:SCRIPT 的"执行"必须由玩家点 Accept(设计如此),自动化只能验证到 UI 门。

@@ -330,6 +330,10 @@ public final class ClientDebugAgent {
     }
 
     private static void sendResponse(long requestId, boolean ok, com.google.gson.JsonElement result, String error) {
+        if (!sessionActive || sessionKey == null) {
+            audit("response for request " + requestId + " dropped (session already closed)");
+            return;
+        }
         JsonObject payload = new JsonObject();
         payload.addProperty("requestId", requestId);
         payload.addProperty("ok", ok);
