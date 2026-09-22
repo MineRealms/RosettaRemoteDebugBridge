@@ -54,7 +54,7 @@ import org.apache.logging.log4j.Logger;
  *    request is checked against it. The default bind address is 127.0.0.1 (loopback)
  *    so the port is never exposed publicly; set -Drosetta.remote.bind=0.0.0.0 only
  *    behind a firewall / SSH tunnel.
- *  - the default port is 48791 and can be overridden with -Drosetta.remote.port.
+ *  - the default port is 48790 and can be overridden with -Drosetta.remote.port.
  *  - the token can be forced with -Drosetta.remote.token; otherwise a random token is
  *    generated on first start and persisted to RosettaRemoteDebugBridge/remote-token.txt.
  *  - file commands (upload/read/tail/ls) are confined to the server root directory.
@@ -65,7 +65,7 @@ public final class RemoteBridge {
 
     private static final Logger LOGGER = LogManager.getLogger("RosettaNexus/Remote");
 
-    public static final int DEFAULT_PORT = 48791;
+    public static final int DEFAULT_PORT = 48790;
     private static final int MAX_LINE = 64 * 1024 * 1024;
     private static final int MAX_RESULT = 200_000;
     private static final String TOKEN_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
