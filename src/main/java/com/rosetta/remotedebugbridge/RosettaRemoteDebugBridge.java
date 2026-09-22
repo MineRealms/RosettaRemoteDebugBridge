@@ -14,7 +14,9 @@
  */
 package com.rosetta.remotedebugbridge;
 
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
@@ -23,6 +25,8 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import com.rosetta.remotedebugbridge.debug.ClientDebugAgent;
+import com.rosetta.remotedebugbridge.debug.ClientSessionManager;
 import com.rosetta.remotedebugbridge.eventbus.bus.RosettaEventBus;
 import com.rosetta.remotedebugbridge.core.RosettaCore;
 import com.rosetta.remotedebugbridge.core.ScriptType;
@@ -56,6 +60,26 @@ public class RosettaRemoteDebugBridge {
         }
         catch (Exception e) {
             logger.error("Failed to load client scripts: {}", e.getMessage(), e);
+        }
+        try {
+            ClientDebugAgent.onClientSetup();
+            com.rosetta.remotedebugbridge.debug.client.ClientDebugClientBridge.install();
+        }
+        catch (Throwable t) {
+            LOGGER.warn("Client remote debug setup failed: {}", t.toString());
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        try {
+            if (event.getEntity() instanceof ServerPlayer player) {
+                ClientSessionManager.remove(player);
+                com.rosetta.remotedebugbridge.debug.ServerSessions.onPlayerDisconnect(player);
+            }
+        }
+        catch (Throwable t) {
+            LOGGER.warn("Client remote debug logout cleanup failed: {}", t.toString());
         }
     }
 

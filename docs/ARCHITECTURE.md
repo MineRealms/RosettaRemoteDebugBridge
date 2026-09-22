@@ -431,6 +431,69 @@ disablePlugin → HandlerList.unregisterAll → 摘除该插件 PluginCommand
 - 文件命令锁定工作目录,`allowPathEscape` 默认关闭;
 - **token 等同服务器 shell 权限**;审计日志记录所有连接与命令名。
 
+### 6.9 客户端远程调试(CRD,C0–C4 已实现)
+
+在"服务器 + 客户端都装本 mod"的前提下,服务器可在**玩家显式授权**后,通过应用层加密通道对客户端
+执行受限调试。定位是自愿开启的调试代理,不是隐藏后门:**默认关闭、逐会话确认、全量审计、随时断开**。
+
+**授权与配置(C3)**
+
+- 客户端配置 `<gamedir>/RosettaRemoteDebugBridge/client-debug.toml`:
+
+  | 键 | 默认 | 说明 |
+  |---|---|---|
+  | `allowRemoteDebug` | `false` | 总开关;关闭时客户端直接拒绝(服务器可见"未授权") |
+  | `requireConfirmPerSession` | `true` | 每次新会话弹确认屏(服务器名 / 指纹 / 权限 / 超时) |
+  | `maxPermission` | `"RELOAD"` | 客户端愿意授予的权限上限(READ/RELOAD/ACTION/SCRIPT) |
+  | `sessionTimeoutMinutes` | `30` | 空闲超时,客户端到期自动断开 |
+
+- 会话期间 HUD 常驻指示(左上角 `CRD ... - /crd disconnect`),`/crd disconnect` 一键断开,
+  `/crd status` 查看状态。
+
+**握手与加密(C3)**
+
+1. 服务器长期身份:EC P-256,持久化 `server-identity.key`,指纹可查(`clientdebug identity`);
+2. 会话请求携带:身份公钥、指纹、一次性临时 ECDH 公钥、身份私钥对临时公钥的 ECDSA 签名;
+3. 客户端校验签名与指纹(TOFU,`client-known-servers.txt`;指纹变化即拒绝并警告);
+4. 双方 ECDH → HKDF-SHA256(盐为双方临时公钥哈希)→ AES-256-GCM 会话密钥;
+5. 服务器经加密 `SessionReady` 下发一次性 `session_token`;
+6. 之后所有信令为 `CrdEnvelope{sessionId, seq, nonce, ciphertext}`;随机 nonce + 递增序列号防重放;
+   速率限制 20 条/秒;空闲超时自动断开,断开即作废密钥。
+
+**权限分级与操作**
+
+| 级别 | 操作 | 说明 |
+|---|---|---|
+| READ | `collect_info` | mods 列表、资源包、FPS/内存、版本、维度、日志尾(客户端侧采集) |
+| READ | `tail_log` | 客户端 `logs/latest.log` 增量 |
+| RELOAD | `resource_reload` | 等价 F3+T(`Minecraft.reloadResourcePacks()`) |
+| RELOAD | `push_resource_pack` | 服务器下发 URL + SHA1,客户端下载到 `resourcepacks/` 并启用 |
+| ACTION | `run_client_action` | 白名单:`screenshot` / `reload_resources` / `clear_chat` / `disconnect` |
+| SCRIPT | `eval_client_script` | 客户端 ECJ 编译执行;**每次执行都弹窗确认** |
+
+**桥命令**
+
+```
+clientdebug list
+clientdebug info <player>
+clientdebug identity
+clientdebug selftest
+clientdebug session <player> open <READ|RELOAD|ACTION|SCRIPT>
+clientdebug session <player> close
+clientdebug op <player> <op> [args JSON]
+```
+
+**实现分层(测试与生产解耦)**
+
+- 公共层(双端可加载,零客户端类型引用):`ClientCapabilityHello/Ack`、`CrdSessionRequest/Reject/
+  Accept/Ready`、`CrdEnvelope`、`CrdCrypto`、`CrdPermission`、`CrdProtocol`、`ServerIdentity`、
+  `ServerSessions`、`ClientSessionManager`、`ClientDebugAgent`、`ClientTrustStore`、`ClientDebugConfig`;
+- 客户端专属层(`.debug.client`,专用服务器不会加载):`ClientDebugConfirmScreen`、`ClientDebugHud`、
+  `ClientScriptRunner`、`ClientDebugClientBridge`、`ClientDebugClientEvents`;
+- 两层通过 `ClientDebugHooks` 接口解耦,由客户端事件类安装实现;
+- **发布 jar 不含任何测试/探针类**(构建时核对);探针归档在 `autotest/probe/`,无人值守脚本在 `autotest/`;
+- 生产自检命令:`clientdebug selftest`(ECDH/HKDF/AES-GCM/签名完整往返)。
+
 ---
 
 ## 7. 游戏内命令系统

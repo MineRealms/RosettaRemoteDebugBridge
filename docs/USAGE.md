@@ -268,6 +268,40 @@ $ ... coder {"action":"api","method":"getMinecraftVersion"}
 {"method":"getMinecraftVersion","returns":"java.lang.String","result":"1.20.1-ecf8d5ad (MC: 1.20.1)","ms":0}
 ```
 
+### 3.14 `clientdebug`(客户端远程调试,CRD)
+
+前提:目标客户端也安装本 mod,且其 `RosettaRemoteDebugBridge/client-debug.toml` 中
+`allowRemoteDebug=true`(默认关闭)。会话需要客户端玩家在确认屏上点 Accept。
+
+| 调用 | 作用 |
+|---|---|
+| `{"action":"list"}` | 已握手的客户端(+ 会话状态) |
+| `{"action":"info","player":"Dev"}` | 单个客户端详情 |
+| `{"action":"identity"}` | 服务器身份指纹(可让玩家核对) |
+| `{"action":"selftest"}` | 加密自检(ECDH/HKDF/AES-GCM/签名往返) |
+| `{"action":"session","player":"Dev","operation":"open","permission":"RELOAD"}` | 发起会话(客户端弹确认) |
+| `{"action":"session","player":"Dev","operation":"close"}` | 关闭会话 |
+| `{"action":"op","player":"Dev","op":"collect_info"}` | READ:采集客户端信息 |
+| `{"action":"op","player":"Dev","op":"tail_log","args":{"lines":100}}` | READ:读取客户端日志尾 |
+| `{"action":"op","player":"Dev","op":"resource_reload"}` | RELOAD:远程 F3+T |
+| `{"action":"op","player":"Dev","op":"push_resource_pack","args":{"url":"https://.../pack.zip","sha1":"..."}}` | RELOAD:下发资源包并启用 |
+| `{"action":"op","player":"Dev","op":"run_client_action","args":{"action":"screenshot"}}` | ACTION:白名单动作 |
+| `{"action":"op","player":"Dev","op":"eval_client_script","args":{"source":"package rosetta.client; public class X { public static void init() { System.out.println(\"hi\"); } }"}}` | SCRIPT:逐次弹窗确认后执行 |
+
+客户端侧:会话请求会弹出确认界面;会话期间左上角 HUD 常驻显示,`/crd status` 查看、`/crd disconnect` 断开。
+所有会话与操作写入客户端 `logs/Rosetta/client-debug.log` 与服务端日志。
+
+```
+$ ... clientdebug {"action":"list"}
+{"clients":[{"name":"Dev","authorized":true,"maxPermission":"RELOAD","session":{"permission":"RELOAD","timeoutSeconds":1800}}], "count":1, "stage":"C4-remote-debug"}
+
+$ ... clientdebug {"action":"session","player":"Dev","operation":"open","permission":"RELOAD"}
+{"sessionId":123,"server":"RosettaNexus @ *:25567","client":"Dev","permission":"RELOAD","fingerprint":"ab12..."}
+
+$ ... clientdebug {"action":"op","player":"Dev","op":"collect_info"}
+{"requestId":1,"ok":true,"result":{"mcVersion":"1.20.1","fps":120,"modCount":4,...}}
+```
+
 ---
 
 ## 4. Bukkit 适配说明（Mohist）

@@ -39,6 +39,9 @@ minecraft {
             if (project.hasProperty('quickPlay')) {
                 args '--quickPlaySingleplayer', project.property('quickPlay')
             }
+            if (project.hasProperty('quickJoin')) {
+                args '--quickPlayMultiplayer', project.property('quickJoin')
+            }
         }
 
         server {

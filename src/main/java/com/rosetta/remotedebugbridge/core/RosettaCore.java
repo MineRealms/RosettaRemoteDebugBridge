@@ -73,6 +73,13 @@ public class RosettaCore {
         }
         try {
             com.rosetta.remotedebugbridge.script.util.NetworkUtils.init(RosettaRemoteDebugBridge.MOD_ID);
+            com.rosetta.remotedebugbridge.script.util.NetworkUtils.register(com.rosetta.remotedebugbridge.debug.ClientCapabilityHello.class, com.rosetta.remotedebugbridge.debug.ClientCapabilityHello::new);
+            com.rosetta.remotedebugbridge.script.util.NetworkUtils.register(com.rosetta.remotedebugbridge.debug.ClientCapabilityAck.class, com.rosetta.remotedebugbridge.debug.ClientCapabilityAck::new);
+            com.rosetta.remotedebugbridge.script.util.NetworkUtils.register(com.rosetta.remotedebugbridge.debug.CrdSessionRequest.class, com.rosetta.remotedebugbridge.debug.CrdSessionRequest::new);
+            com.rosetta.remotedebugbridge.script.util.NetworkUtils.register(com.rosetta.remotedebugbridge.debug.CrdSessionReject.class, com.rosetta.remotedebugbridge.debug.CrdSessionReject::new);
+            com.rosetta.remotedebugbridge.script.util.NetworkUtils.register(com.rosetta.remotedebugbridge.debug.CrdSessionAccept.class, com.rosetta.remotedebugbridge.debug.CrdSessionAccept::new);
+            com.rosetta.remotedebugbridge.script.util.NetworkUtils.register(com.rosetta.remotedebugbridge.debug.CrdSessionReady.class, com.rosetta.remotedebugbridge.debug.CrdSessionReady::new);
+            com.rosetta.remotedebugbridge.script.util.NetworkUtils.register(com.rosetta.remotedebugbridge.debug.CrdEnvelope.class, com.rosetta.remotedebugbridge.debug.CrdEnvelope::new);
         }
         catch (Throwable t) {
             RosettaRemoteDebugBridge.LOGGER.warn("RosettaRemoteDebugBridge network channel initialization failed: {}", (Object)t.toString());

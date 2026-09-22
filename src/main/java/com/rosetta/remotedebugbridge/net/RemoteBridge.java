@@ -7,6 +7,11 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge;
+import com.rosetta.remotedebugbridge.debug.ClientSessionManager;
+import com.rosetta.remotedebugbridge.debug.CrdCrypto;
+import com.rosetta.remotedebugbridge.debug.CrdPermission;
+import com.rosetta.remotedebugbridge.debug.ServerIdentity;
+import com.rosetta.remotedebugbridge.debug.ServerSessions;
 import com.rosetta.remotedebugbridge.script.CompiledClass;
 import com.rosetta.remotedebugbridge.script.DynamicClassLoader;
 import com.rosetta.remotedebugbridge.script.JavaSourceCompiler;
@@ -37,6 +42,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.fml.loading.FMLPaths;
 import net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler;
 import org.apache.logging.log4j.LogManager;
@@ -292,9 +298,11 @@ public final class RemoteBridge {
                 return listener(args.has("action") ? args.get("action").getAsString() : "status");
             case "coder":
                 return coder(args);
+            case "clientdebug":
+                return clientDebug(args);
             default:
                 throw new IllegalArgumentException("unknown cmd: " + cmd
-                        + " (try: ping, console, exec, reflect, upload, read, tail, ls, plugins, enable, disable, update, listener, coder)");
+                        + " (try: ping, console, exec, reflect, upload, read, tail, ls, plugins, enable, disable, update, listener, coder, clientdebug)");
         }
     }
 
@@ -730,6 +738,112 @@ public final class RemoteBridge {
 
     private static String text(JsonObject object, String key) {
         return object.has(key) && !object.get(key).isJsonNull() ? object.get(key).getAsString() : "";
+    }
+
+    // ------------------------------------------------------------------ client remote debug (C0)
+
+    /**
+     * Client Remote Debug (CRD):
+     *   {"action":"list"}                                             - registered clients (+session state)
+     *   {"action":"info","player":"Dev"}                              - one client
+     *   {"action":"identity"}                                         - server identity fingerprint
+     *   {"action":"selftest"}                                         - crypto self-check (production diagnostic)
+     *   {"action":"session","player":"Dev","operation":"open","permission":"RELOAD"}
+     *   {"action":"session","player":"Dev","operation":"close"}
+     *   {"action":"op","player":"Dev","op":"collect_info","args":{}}  - encrypted op (C1..C4)
+     */
+    private JsonElement clientDebug(JsonObject args) throws Throwable {
+        String action = args.has("action") ? args.get("action").getAsString() : "list";
+        switch (action) {
+            case "list":
+                return clientDebugList();
+            case "info":
+                return clientDebugInfo(require(args, "player"));
+            case "identity": {
+                JsonObject out = new JsonObject();
+                out.addProperty("fingerprint", ServerIdentity.get().getFingerprint());
+                out.addProperty("shortFingerprint", ServerIdentity.get().getShortFingerprint());
+                out.addProperty("file", ServerIdentity.get().getFile().toString());
+                return out;
+            }
+            case "selftest": {
+                JsonObject out = new JsonObject();
+                out.addProperty("cryptoRoundtrip", CrdCrypto.selfTest());
+                out.addProperty("fingerprint", ServerIdentity.get().getFingerprint());
+                return out;
+            }
+            case "session": {
+                String playerName = require(args, "player");
+                String operation = args.has("operation") ? args.get("operation").getAsString() : "open";
+                if ("close".equals(operation)) {
+                    return ServerSessions.closeSession(requirePlayer(playerName), "closed via bridge");
+                }
+                if (!"open".equals(operation)) {
+                    throw new IllegalArgumentException("operation must be open|close");
+                }
+                CrdPermission permission = CrdPermission.parse(
+                        args.has("permission") ? args.get("permission").getAsString() : "READ",
+                        CrdPermission.READ);
+                return ServerSessions.openSessionBlocking(requirePlayer(playerName), permission, 60_000);
+            }
+            case "op": {
+                String playerName = require(args, "player");
+                String op = require(args, "op");
+                JsonObject opArgs = args.has("args") && args.get("args").isJsonObject()
+                        ? args.getAsJsonObject("args") : new JsonObject();
+                return ServerSessions.opBlocking(requirePlayer(playerName), op, opArgs, 120_000);
+            }
+            default:
+                throw new IllegalArgumentException("action must be list|info|identity|selftest|session|op");
+        }
+    }
+
+    private ServerPlayer requirePlayer(String name) {
+        MinecraftServer server = this.mcServer;
+        if (server == null) {
+            throw new IllegalStateException("server not available");
+        }
+        ServerPlayer player = server.getPlayerList().getPlayerByName(name);
+        if (player == null) {
+            throw new IllegalArgumentException("player not online: " + name);
+        }
+        return player;
+    }
+
+    private JsonObject clientDebugList() {
+        JsonArray clients = new JsonArray();
+        for (ClientSessionManager.ClientInfo info : ClientSessionManager.list()) {
+            clients.add(clientInfoJson(info));
+        }
+        JsonObject out = new JsonObject();
+        out.add("clients", clients);
+        out.addProperty("count", clients.size());
+        out.addProperty("stage", "C4-remote-debug");
+        return out;
+    }
+
+    private JsonObject clientDebugInfo(String player) {
+        ClientSessionManager.ClientInfo info = ClientSessionManager.find(player);
+        if (info == null) {
+            throw new IllegalArgumentException("client not registered (no capability_hello yet): " + player);
+        }
+        return clientInfoJson(info);
+    }
+
+    private JsonObject clientInfoJson(ClientSessionManager.ClientInfo info) {
+        JsonObject out = new JsonObject();
+        out.addProperty("name", info.name());
+        out.addProperty("uuid", info.id().toString());
+        out.addProperty("clientVersion", info.clientVersion());
+        out.addProperty("authorized", info.authorized());
+        out.addProperty("maxPermission", info.maxPermission());
+        out.addProperty("moduleVersion", info.moduleVersion());
+        out.addProperty("helloAt", info.helloAt());
+        JsonObject session = ServerSessions.describe(info.id());
+        if (session != null) {
+            out.add("session", session);
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ helpers

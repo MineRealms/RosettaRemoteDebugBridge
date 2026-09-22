@@ -279,6 +279,17 @@ python legacy/tools/rosetta_remote.py --port 48790 --token <TOKEN> ping
 | 插件 | `enable`、`disable`、`update`(热更新) |
 | 集成 | `listener`(status/cleanup/restore)、`coder`(list/api/run) |
 
+### 客户端远程调试(CRD)
+
+装了本 mod 的客户端可被服务器远程调试(**默认关闭**,玩家逐会话确认后才生效):
+
+- 权限分级:READ(采集信息/日志)→ RELOAD(F3+T/下发资源包)→ ACTION(白名单动作)→
+  SCRIPT(客户端脚本,逐次确认);
+- 应用层加密:ECDH(P-256)→ HKDF → AES-256-GCM;服务器身份指纹 TOFU 校验;会话超时/断开即作废密钥;
+- 玩家侧:`/crd status`、`/crd disconnect` 随时断开,HUD 常驻指示,双端审计
+  (`logs/Rosetta/client-debug.log`);
+- 桥命令:`clientdebug list|info|identity|selftest|session|op`(详见 [docs/USAGE.md](docs/USAGE.md))。
+
 ---
 
 ## 构建与测试
