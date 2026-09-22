@@ -76,11 +76,19 @@ public class JavaSourceCompiler {
         this.options.add("-encoding");
         this.options.add("UTF-8");
         this.options.add("-warn:none");
-        this.options.add("-processor");
-        this.options.add("org.spongepowered.tools.obfuscation.MixinObfuscationProcessorInjection,org.spongepowered.tools.obfuscation.MixinObfuscationProcessorTargets");
-        this.options.add("-Amixin.env.remapRefMap=true");
-        this.options.add("-Amixin.env.disableTargetExport=true");
-        this.options.add("-Amixin.debug.export.decompile=false");
+        // Mixin annotation processors are only useful for script-side Mixin work and need
+        // org.spongepowered.tools.* on the compiler classpath. When they are unavailable
+        // (plain server runtime), javac/ECJ aborts with an internal ClassNotFoundException,
+        // so annotation processing is opt-in via -Drosetta.mixin.annotationProcessors=true.
+        if (Boolean.getBoolean("rosetta.mixin.annotationProcessors")) {
+            this.options.add("-processor");
+            this.options.add("org.spongepowered.tools.obfuscation.MixinObfuscationProcessorInjection,org.spongepowered.tools.obfuscation.MixinObfuscationProcessorTargets");
+            this.options.add("-Amixin.env.remapRefMap=true");
+            this.options.add("-Amixin.env.disableTargetExport=true");
+            this.options.add("-Amixin.debug.export.decompile=false");
+        } else {
+            this.options.add("-proc:none");
+        }
         this.options.add("-preserveAllLocals");
         this.options.add("-Xdiags:verbose");
         this.options.add("-enableJavadoc");

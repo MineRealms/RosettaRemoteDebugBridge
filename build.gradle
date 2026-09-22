@@ -97,6 +97,9 @@ tasks.named('processResources', ProcessResources).configure {
 
     from zipTree('libs/rainapi-repack-1.0.2.jar')
     from zipTree('libs/mixin-0.8.5-dev.jar')
+    // The Mixin fork ships a JPMS module-info that re-registers an ITransformationService
+    // named "mixin", colliding with Forge's own service (Duplicate key mixin crash).
+    exclude 'module-info.class'
 }
 
 tasks.named('jar', Jar).configure {
