@@ -47,7 +47,9 @@ public final class NetworkUtils {
             }
             return channel;
         }
-        channel = NetworkRegistry.newSimpleChannel(id, () -> PROTOCOL_VERSION, PROTOCOL_VERSION::equals, PROTOCOL_VERSION::equals);
+        channel = NetworkRegistry.newSimpleChannel(id, () -> PROTOCOL_VERSION,
+                NetworkRegistry.acceptMissingOr(PROTOCOL_VERSION),
+                NetworkRegistry.acceptMissingOr(PROTOCOL_VERSION));
         channelModId = modId;
         nextPacketId = 0;
         REGISTERED.clear();
