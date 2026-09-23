@@ -61,6 +61,6 @@ public abstract class MohistInventoryGuardMixin {
             }
         } catch (Throwable ignored) {
         }
-        ROSETTA_LOGGER.warn(sb.toString());
+        ROSETTA_LOGGER.debug(sb.toString());
     }
 }

@@ -31,6 +31,7 @@ import com.rosetta.remotedebugbridge.eventbus.bus.RosettaEventBus;
 import com.rosetta.remotedebugbridge.core.RosettaCore;
 import com.rosetta.remotedebugbridge.core.ScriptType;
 import com.rosetta.remotedebugbridge.logging.RosettaLogger;
+import com.rosetta.remotedebugbridge.net.MaterialFallbackFix;
 import com.rosetta.remotedebugbridge.net.RemoteBridge;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -97,6 +98,7 @@ public class RosettaRemoteDebugBridge {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
+        MaterialFallbackFix.applyIfEnabled();
         try {
             RemoteBridge.start(event.getServer());
         }
