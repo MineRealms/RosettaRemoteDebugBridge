@@ -68,6 +68,7 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 mixin {
     add sourceSets.main, 'rosetta_remote_debug_bridge.refmap.json'
     config 'rosetta_remote_debug_bridge.mixins.json'
+    config 'rosetta_mohist_guard.mixins.json'
 }
 
 // Minimal compile-only stubs for the Bukkit types referenced by the public NexusTask

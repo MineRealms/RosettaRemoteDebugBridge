@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.rosetta.remotedebugbridge.mixin.mohist",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "rosetta_remote_debug_bridge.refmap.json",
+  "verbose": false,
+  "mixins": [
+    "MohistInventoryGuardMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

@@ -90,14 +90,11 @@ public class JavaSourceCompiler {
             this.options.add("-proc:none");
         }
         this.options.add("-preserveAllLocals");
-        this.options.add("-Xdiags:verbose");
         this.options.add("-enableJavadoc");
         this.options.add("-g:vars,lines,source");
         this.options.add("-proceedOnError");
         this.options.add("-XenableNullAnnotations");
         this.options.add("-XJavac");
-        this.options.add("-XprintProcessorInfo");
-        this.options.add("-verbose");
         this.classPath = classPath = this.buildClassPath();
         this.options.add("-classpath");
         this.options.add(classPath);
