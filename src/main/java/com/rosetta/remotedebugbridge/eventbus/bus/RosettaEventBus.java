@@ -2,7 +2,7 @@
  * Decompiled with CFR 0.152.
  * 
  * Could not load the following classes:
- *  net.minecraftforge.eventbus.api.Event
+ *  net.neoforged.bus.api.Event
  *  org.apache.logging.log4j.LogManager
  *  org.apache.logging.log4j.Logger
  */
@@ -20,7 +20,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import net.minecraftforge.eventbus.api.Event;
+import net.neoforged.bus.api.Event;
+import net.neoforged.bus.api.ICancellableEvent;
 import com.rosetta.remotedebugbridge.eventbus.RosettaSubscribeEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -144,9 +145,8 @@ public class RosettaEventBus {
     }
 
     private static boolean isCanceled(Object event) {
-        if (event instanceof Event) {
-            Event forgeEvent = (Event)event;
-            return forgeEvent.isCanceled();
+        if (event instanceof ICancellableEvent cancellable) {
+            return cancellable.isCanceled();
         }
         return false;
     }

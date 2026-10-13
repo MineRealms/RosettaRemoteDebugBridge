@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.neoforged.fml.loading.FMLPaths;
 import net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -641,7 +641,7 @@ public final class RemoteBridge {
         }
         JsonArray array = new JsonArray();
         try {
-            Class<?> modList = Reflect.load("net.minecraftforge.fml.ModList");
+            Class<?> modList = Reflect.load("net.neoforged.fml.ModList");
             Object list = Reflect.callStatic(modList, "get");
             Object mods = Reflect.call(list, "getMods");
             if (mods instanceof List<?> values) {

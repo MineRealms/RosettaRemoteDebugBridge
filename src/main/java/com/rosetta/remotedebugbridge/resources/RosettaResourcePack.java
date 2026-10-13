@@ -1,15 +1,5 @@
 /*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  com.google.gson.JsonObject
- *  javax.annotation.Nullable
- *  net.minecraft.resources.ResourceLocation
- *  net.minecraft.server.packs.PackResources
- *  net.minecraft.server.packs.PackResources$ResourceOutput
- *  net.minecraft.server.packs.PackType
- *  net.minecraft.server.packs.metadata.MetadataSectionSerializer
- *  net.minecraft.server.packs.resources.IoSupplier
+ * RosettaRemoteDebugBridge - dynamic resource/data pack for NeoForge 1.21.1.
  */
 package com.rosetta.remotedebugbridge.resources;
 
@@ -27,6 +17,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.metadata.MetadataSectionSerializer;
@@ -35,13 +26,16 @@ import com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge;
 
 public class RosettaResourcePack
 implements PackResources {
+    private static final int PACK_FORMAT = 34;
     private final Path rootPath;
     private final PackType packType;
+    private final PackLocationInfo location;
     private final Set<String> namespaces;
 
-    public RosettaResourcePack(Path rootPath, PackType packType) {
+    public RosettaResourcePack(Path rootPath, PackType packType, PackLocationInfo location) {
         this.rootPath = rootPath;
         this.packType = packType;
+        this.location = location;
         this.namespaces = new HashSet<String>();
         this.scanNamespaces();
     }
@@ -61,6 +55,11 @@ implements PackResources {
         }
     }
 
+    @Override
+    public PackLocationInfo location() {
+        return this.location;
+    }
+
     @Nullable
     public IoSupplier<InputStream> getRootResource(String ... paths) {
         if (paths.length == 0) {
@@ -72,7 +71,7 @@ implements PackResources {
             return () -> Files.newInputStream(file, new OpenOption[0]);
         }
         if ("pack.mcmeta".equals(fileName)) {
-            String meta = "{\n    \"pack\": {\n        \"pack_format\": 15,\n        \"description\": \"RosettaRemoteDebugBridge Dynamic Resources\"\n    }\n}\n";
+            String meta = "{\n    \"pack\": {\n        \"pack_format\": " + PACK_FORMAT + ",\n        \"description\": \"RosettaRemoteDebugBridge Dynamic Resources\"\n    }\n}\n";
             return () -> new ByteArrayInputStream(meta.getBytes());
         }
         return null;
@@ -104,7 +103,7 @@ implements PackResources {
                 try {
                     Path relative = namespacePath.relativize((Path)file);
                     String resourcePath = path + "/" + relative.toString().replace('\\', '/');
-                    ResourceLocation location = new ResourceLocation(namespace, resourcePath);
+                    ResourceLocation location = ResourceLocation.fromNamespaceAndPath(namespace, resourcePath);
                     resourceOutput.accept(location, () -> Files.newInputStream(file, new OpenOption[0]));
                 }
                 catch (Exception e) {
@@ -129,7 +128,7 @@ implements PackResources {
         try {
             if (deserializer.getMetadataSectionName().equals("pack")) {
                 JsonObject pack = new JsonObject();
-                pack.addProperty("pack_format", (Number)15);
+                pack.addProperty("pack_format", (Number)PACK_FORMAT);
                 pack.addProperty("description", "RosettaRemoteDebugBridge Dynamic Resources");
                 return (T)deserializer.fromJson(pack);
             }
@@ -147,4 +146,3 @@ implements PackResources {
     public void close() {
     }
 }
-

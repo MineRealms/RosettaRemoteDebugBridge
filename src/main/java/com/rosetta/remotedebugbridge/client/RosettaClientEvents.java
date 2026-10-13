@@ -10,12 +10,12 @@
  *  net.minecraft.network.chat.ClickEvent$Action
  *  net.minecraft.network.chat.Component
  *  net.minecraft.network.chat.MutableComponent
- *  net.minecraftforge.api.distmarker.Dist
- *  net.minecraftforge.event.TickEvent$ClientTickEvent
- *  net.minecraftforge.event.TickEvent$Phase
- *  net.minecraftforge.eventbus.api.SubscribeEvent
- *  net.minecraftforge.fml.common.Mod$EventBusSubscriber
- *  net.minecraftforge.fml.common.Mod$EventBusSubscriber$Bus
+ *  net.neoforged.api.distmarker.Dist
+ *  net.neoforged.neoforge.event.TickEvent$ClientTickEvent
+ *  net.neoforged.neoforge.event.TickEvent$Phase
+ *  net.neoforged.bus.api.SubscribeEvent
+ *  net.neoforged.fml.common.Mod$EventBusSubscriber
+ *  net.neoforged.fml.common.Mod$EventBusSubscriber$Bus
  */
 package com.rosetta.remotedebugbridge.client;
 
@@ -26,26 +26,24 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.common.Mod;
 import com.rosetta.remotedebugbridge.client.RosettaErrorScreen;
 import com.rosetta.remotedebugbridge.core.ScriptType;
 import com.rosetta.remotedebugbridge.logging.ScriptErrorCollector;
 
-@Mod.EventBusSubscriber(modid="rosetta_remote_debug_bridge", bus=Mod.EventBusSubscriber.Bus.FORGE, value={Dist.CLIENT})
+@EventBusSubscriber(modid="rosetta_remote_debug_bridge", bus=EventBusSubscriber.Bus.GAME, value={Dist.CLIENT})
 public class RosettaClientEvents {
     private static boolean startupScreenShown = false;
     private static boolean worldNotified = false;
 
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
+    public static void onClientTick(ClientTickEvent.Pre event) {
         ScriptType target;
         boolean hasIssues;
-        if (event.phase != TickEvent.Phase.START) {
-            return;
-        }
         Minecraft mc = Minecraft.getInstance();
         if (!startupScreenShown && ScriptErrorCollector.hasErrors(ScriptType.STARTUP)) {
             if (mc.screen instanceof TitleScreen) {

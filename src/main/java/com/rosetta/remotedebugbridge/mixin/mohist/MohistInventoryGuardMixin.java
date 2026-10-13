@@ -54,7 +54,7 @@ public abstract class MohistInventoryGuardMixin {
             Object nmsItem = handle.getClass().getMethod("m_41720_").invoke(handle);
             sb.append(" itemClass=").append(nmsItem.getClass().getName());
             try {
-                Object registry = Class.forName("net.minecraftforge.registries.ForgeRegistries").getField("ITEMS").get(null);
+                Object registry = Class.forName("net.minecraft.core.registries.BuiltInRegistries").getField("ITEMS").get(null);
                 Object key = registry.getClass().getMethod("m_7981_", Object.class).invoke(registry, nmsItem);
                 sb.append(" key=").append(key);
             } catch (Throwable ignored) {

@@ -1,6 +1,6 @@
 # RosettaRemoteDebugBridge 使用手册（`rosetta_remote_debug_bridge`）
 
-> 适用产物：`rosetta_remote_debug_bridge-1.0.0.jar`（Forge 1.20.1 单产物：脚本引擎 + 静态 Mixin + Bukkit 适配 + 远程控制面）
+> 适用产物：`rosetta_remote_debug_bridge-1.0.1.jar`（NeoForge 1.21.1 单产物：脚本引擎 + Bukkit 适配 + 远程控制面；Mixin 子系统暂缓）
 > 配套文档：[README](../README.md) · [技术手册](ARCHITECTURE.md) · [测试与验收](TESTING.md)
 > 状态：默认端口 **48790**；旧 `RosettaRemote` 插件桥已退役（jar 备份于 `plugins-disabled/`）。
 
@@ -10,7 +10,7 @@
 
 ### 1.1 部署
 
-1. 把 `rosetta_remote_debug_bridge-1.0.0.jar` 放入服务端 `mods/`（Mohist / 纯 Forge 1.20.1）。
+1. 把 `rosetta_remote_debug_bridge-1.0.1.jar` 放入服务端 `mods/`（Mohist / 纯 NeoForge 1.21.1）。
 2. 启动服务端。首次启动会在**服务端工作目录**（本测试服为 `run-fast/`）生成：
    - `RosettaRemoteDebugBridge/remote-token.txt`：28 字符随机 token；
    - `RosettaRemoteDebugBridge/{server,data,mixins}/`：脚本、数据包、动态 Mixin 目录。
@@ -92,7 +92,7 @@ print(rr.call("127.0.0.1", 48790, TOKEN, "coder", {"action": "list"}))
 
 ## 3. 命令手册
 
-以下返回示例均来自 run-fast 实机（Mohist 1.20.1 / 48790）。
+以下返回示例均来自 run-fast 实机（Mohist 1.21.1 / 48790）。
 
 ### 3.1 `ping`
 
@@ -113,13 +113,13 @@ $ python ... --port 48790 --token <T> ping
 }
 ```
 
-`server`/`bridge` 字段用于区分 mod 桥与旧插件桥（旧桥返回 `Mohist 1.20.1-...` + `remote` 字段）。
+`server`/`bridge` 字段用于区分 mod 桥与旧插件桥（旧桥返回 `Mohist 1.21.1-...` + `remote` 字段）。
 
 ### 3.2 `console`
 
 - args：`{"command":"<原样命令>"}`（客户端 `console "plugin list"` 会合并剩余参数）。
 - 返回：`{"dispatched":bool,"output":"<命令执行后新增的服务端日志片段>"}`（等待 250ms 后读取日志增量）。
-- Mohist 上走 Bukkit `ConsoleCommandSender`；纯 Forge 上走原版命令分发器。
+- Mohist 上走 Bukkit `ConsoleCommandSender`；纯 NeoForge 上走原版命令分发器。
 
 ```
 $ python ... console "plugins"
@@ -131,13 +131,13 @@ $ python ... console "plugins"
 
 - args：`{"code":"<Java 方法体>","args":["..."]}`；`args` 会作为 `Object[]` 传给任务。
 - 返回：`{"result":"<String.valueOf(返回值)>  [Nms]","class":"rosetta.remote.generated.RosettaTask<...>"}`。
-- 生成的类实现 `run(plugin,args)`，方法体必须 `return`；Mohist 上自动 `import org.bukkit.*` 并实现 `NexusTask`，纯 Forge 上 `plugin` 为 `null`。
+- 生成的类实现 `run(plugin,args)`，方法体必须 `return`；Mohist 上自动 `import org.bukkit.*` 并实现 `NexusTask`，纯 NeoForge 上 `plugin` 为 `null`。
 - SRG 运行时会自动做 MCP→SRG 源码转换（可写官方名）。
 
 ```
 $ python ... eval 'return org.bukkit.Bukkit.getVersion();'
 {
-  "result": "1.20.1-ecf8d5ad (MC: 1.20.1)  [1ms]",
+  "result": "1.21.1-ecf8d5ad (MC: 1.21.1)  [1ms]",
   "class": "rosetta.remote.generated.RosettaTask5690632955000"
 }
 ```
@@ -151,7 +151,7 @@ $ python ... eval 'return org.bukkit.Bukkit.getVersion();'
 ```
 $ python ... reflect org.bukkit.Bukkit getVersion server
 {
-  "result": "1.20.1-ecf8d5ad (MC: 1.20.1)"
+  "result": "1.21.1-ecf8d5ad (MC: 1.21.1)"
 }
 ```
 
@@ -200,13 +200,13 @@ $ python ... ls RosettaRemoteDebugBridge/server
 
 ### 3.9 `plugins`
 
-- args：无。Mohist 上返回 Bukkit 插件；纯 Forge 上退化为 ModList（`enabled` 恒 `true`）。
+- args：无。Mohist 上返回 Bukkit 插件；纯 NeoForge 上退化为 ModList（`enabled` 恒 `true`）。
 - 返回：`[{"name","version","enabled"}]`。
 
 ```
 $ python ... plugins
 [{"name":"Coder","version":"2.5.0-mohist-java17","enabled":true},
- {"name":"Mohist","version":"1.20.1","enabled":true},
+ {"name":"Mohist","version":"1.21.1","enabled":true},
  {"name":"ForgeKit","version":"1.0.1","enabled":true}]
 ```
 
@@ -265,7 +265,7 @@ $ ... coder {"action":"list"}
  "loader":"org.bukkit.plugin.java.PluginClassLoader@10c33","methods":133,"instance":true}
 
 $ ... coder {"action":"api","method":"getMinecraftVersion"}
-{"method":"getMinecraftVersion","returns":"java.lang.String","result":"1.20.1-ecf8d5ad (MC: 1.20.1)","ms":0}
+{"method":"getMinecraftVersion","returns":"java.lang.String","result":"1.21.1-ecf8d5ad (MC: 1.21.1)","ms":0}
 ```
 
 ### 3.14 `clientdebug`(客户端远程调试,CRD)
@@ -299,7 +299,7 @@ $ ... clientdebug {"action":"session","player":"Dev","operation":"open","permiss
 {"sessionId":123,"server":"RosettaNexus @ *:25567","client":"Dev","permission":"RELOAD","fingerprint":"ab12..."}
 
 $ ... clientdebug {"action":"op","player":"Dev","op":"collect_info"}
-{"requestId":1,"ok":true,"result":{"mcVersion":"1.20.1","fps":120,"modCount":4,...}}
+{"requestId":1,"ok":true,"result":{"mcVersion":"1.21.1","fps":120,"modCount":4,...}}
 ```
 
 ---
@@ -344,12 +344,12 @@ $ ... clientdebug {"action":"op","player":"Dev","op":"collect_info"}
 - `coder api` 可调用 133 个 API 方法；`coder run` 经控制台驱动 `coderc run/compile`。
 - Coder 侧脚本若要注册监听/命令，同样建议使用 `NexusBukkit`，即可获得 reload 清理语义。
 
-### 4.7 纯 Forge（无 Bukkit）路径
+### 4.7 纯 NeoForge（无 Bukkit）路径
 
 代码审查（`com.rosetta.remotedebugbridge.net.*`）：
 
 - 除 `NexusTask` 接口签名包含 `org.bukkit.plugin.Plugin` 外，其余类**零硬引用**，一律 `Reflect.load` 反射访问；`BukkitAdapter.present()` 捕获所有 `Throwable`。
-- `exec` 仅在检测到 Bukkit 时才生成 `implements NexusTask` 的源码；纯 Forge 生成 `run(Object,Object[])`。
+- `exec` 仅在检测到 Bukkit 时才生成 `implements NexusTask` 的源码；纯 NeoForge 生成 `run(Object,Object[])`。
 - `console` 回退原版命令分发器；`plugins` 回退 `ModList`；`update`/`enable`/`disable` 明确抛 `Bukkit is not present on this server`。
 - 无 Bukkit 类路径下所有适配入口均惰性返回或抛出明确异常（`Bukkit is not present on this server`），无 ClassNotFound 崩溃路径。
 

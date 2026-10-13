@@ -1,6 +1,6 @@
 /*
  * Decompiled with CFR 0.152.
- * 
+ *
  * Could not load the following classes:
  *  net.minecraft.world.entity.Entity
  *  net.minecraft.world.entity.EntityType
@@ -12,11 +12,11 @@
  *  net.minecraft.world.level.block.Blocks
  *  net.minecraft.world.level.block.state.BlockBehaviour
  *  net.minecraft.world.level.block.state.BlockBehaviour$Properties
- *  net.minecraftforge.eventbus.api.IEventBus
- *  net.minecraftforge.registries.DeferredRegister
- *  net.minecraftforge.registries.ForgeRegistries
- *  net.minecraftforge.registries.IForgeRegistry
- *  net.minecraftforge.registries.RegistryObject
+ *  net.neoforged.bus.api.IEventBus
+ *  net.neoforged.neoforge.registries.DeferredRegister
+ *  net.minecraft.core.registries.BuiltInRegistries
+ *  net.minecraft.core.registries.Registries
+ *  net.neoforged.neoforge.registries.DeferredHolder
  */
 package com.rosetta.remotedebugbridge.script.util;
 
@@ -25,6 +25,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -33,11 +35,9 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
-import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.registries.DeferredRegister;
-import net.minecraftforge.registries.ForgeRegistries;
-import net.minecraftforge.registries.IForgeRegistry;
-import net.minecraftforge.registries.RegistryObject;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.registries.DeferredHolder;
+import net.neoforged.neoforge.registries.DeferredRegister;
 
 public class RegUtils {
     private static final Map<String, ModRegistries> MOD_REGISTRIES = new ConcurrentHashMap<String, ModRegistries>();
@@ -72,7 +72,7 @@ public class RegUtils {
         return RegUtils.getRegistries((String)modId).entities;
     }
 
-    public static <T> DeferredRegister<T> createRegister(String modId, IForgeRegistry<T> registry, IEventBus eventBus) {
+    public static <T> DeferredRegister<T> createRegister(String modId, Registry<T> registry, IEventBus eventBus) {
         if (registry == null) {
             throw new IllegalArgumentException("registry must not be null");
         }
@@ -81,9 +81,9 @@ public class RegUtils {
         if (bus == null) {
             throw new IllegalStateException("No IEventBus available for mod '" + modId + "'");
         }
-        DeferredRegister<T> register = DeferredRegister.create(registry, (String)modId);
+        DeferredRegister<T> register = DeferredRegister.create(registry.key(), (String)modId);
         register.register(bus);
-        ResourceLocation registryName = registry.getRegistryName();
+        ResourceLocation registryName = registry.key().location();
         registries.customRegisters.put(registryName != null ? registryName.toString() : registry.toString(), register);
         return register;
     }
@@ -92,15 +92,15 @@ public class RegUtils {
         return RegUtils.getRegistries(modId).customRegisters.get(registryName);
     }
 
-    public static <T> RegistryObject<T> registerCustom(DeferredRegister<T> register, String id, Supplier<T> supplier) {
+    public static <T> DeferredHolder<T, T> registerCustom(DeferredRegister<T> register, String id, Supplier<T> supplier) {
         return register.register(id, supplier);
     }
 
-    public static <T> RegistryObject<T> registerCustom(DeferredRegister<T> register, String id, T object) {
+    public static <T> DeferredHolder<T, T> registerCustom(DeferredRegister<T> register, String id, T object) {
         return register.register(id, () -> object);
     }
 
-    public static <T> RegistryObject<T> registerCustom(DeferredRegister<T> register, String id, Class<? extends T> clazz) {
+    public static <T> DeferredHolder<T, T> registerCustom(DeferredRegister<T> register, String id, Class<? extends T> clazz) {
         return register.register(id, () -> {
             try {
                 return clazz.getDeclaredConstructor(new Class[0]).newInstance(new Object[0]);
@@ -111,7 +111,7 @@ public class RegUtils {
         });
     }
 
-    public static <T> RegistryObject<T> registerCustom(DeferredRegister<T> register, String id, Class<? extends T> clazz, Object ... args) {
+    public static <T> DeferredHolder<T, T> registerCustom(DeferredRegister<T> register, String id, Class<? extends T> clazz, Object ... args) {
         return register.register(id, () -> {
             try {
                 Constructor<? extends T> constructor = RegUtils.findMatchingConstructor(clazz, args);
@@ -127,15 +127,15 @@ public class RegUtils {
         });
     }
 
-    public static RegistryObject<Block> registerCustomBlock(String modId, String id, Supplier<Block> supplier) {
+    public static DeferredHolder<Block, Block> registerCustomBlock(String modId, String id, Supplier<Block> supplier) {
         return RegUtils.getBlockRegister(modId).register(id, supplier);
     }
 
-    public static RegistryObject<Item> registerCustomItem(String modId, String id, Supplier<Item> supplier) {
+    public static DeferredHolder<Item, Item> registerCustomItem(String modId, String id, Supplier<Item> supplier) {
         return RegUtils.getItemRegister(modId).register(id, supplier);
     }
 
-    public static RegistryObject<EntityType<?>> registerCustomEntity(String modId, String id, Supplier<EntityType<?>> supplier) {
+    public static DeferredHolder<EntityType<?>, EntityType<?>> registerCustomEntity(String modId, String id, Supplier<EntityType<?>> supplier) {
         return RegUtils.getEntityRegister(modId).register(id, supplier);
     }
 
@@ -193,52 +193,52 @@ public class RegUtils {
         return false;
     }
 
-    public static RegistryObject<Block> block(String modId, String name, BlockBehaviour.Properties properties) {
+    public static DeferredHolder<Block, Block> block(String modId, String name, BlockBehaviour.Properties properties) {
         return RegUtils.getRegistries((String)modId).blocks.register(name, () -> new Block(properties));
     }
 
-    public static RegistryObject<Block> block(String modId, String name) {
-        return RegUtils.block(modId, name, BlockBehaviour.Properties.copy((BlockBehaviour)Blocks.STONE).strength(1.5f, 6.0f));
+    public static DeferredHolder<Block, Block> block(String modId, String name) {
+        return RegUtils.block(modId, name, BlockBehaviour.Properties.ofFullCopy((Block)Blocks.STONE).strength(1.5f, 6.0f));
     }
 
-    public static <T extends Block> RegistryObject<T> block(String modId, String name, Supplier<T> blockSupplier) {
+    public static <T extends Block> DeferredHolder<Block, T> block(String modId, String name, Supplier<T> blockSupplier) {
         return RegUtils.getRegistries((String)modId).blocks.register(name, blockSupplier);
     }
 
-    public static RegistryObject<Block> blockWithItem(String modId, String name, BlockBehaviour.Properties properties) {
-        RegistryObject<Block> block = RegUtils.block(modId, name, properties);
+    public static DeferredHolder<Block, Block> blockWithItem(String modId, String name, BlockBehaviour.Properties properties) {
+        DeferredHolder<Block, Block> block = RegUtils.block(modId, name, properties);
         RegUtils.blockItem(modId, name, block);
         return block;
     }
 
-    public static RegistryObject<Block> blockWithItem(String modId, String name) {
-        RegistryObject<Block> block = RegUtils.block(modId, name);
+    public static DeferredHolder<Block, Block> blockWithItem(String modId, String name) {
+        DeferredHolder<Block, Block> block = RegUtils.block(modId, name);
         RegUtils.blockItem(modId, name, block);
         return block;
     }
 
-    public static RegistryObject<Item> item(String modId, String name, Item.Properties properties) {
+    public static DeferredHolder<Item, Item> item(String modId, String name, Item.Properties properties) {
         return RegUtils.getRegistries((String)modId).items.register(name, () -> new Item(properties));
     }
 
-    public static RegistryObject<Item> item(String modId, String name) {
+    public static DeferredHolder<Item, Item> item(String modId, String name) {
         return RegUtils.item(modId, name, new Item.Properties());
     }
 
-    public static <T extends Item> RegistryObject<T> item(String modId, String name, Supplier<T> itemSupplier) {
+    public static <T extends Item> DeferredHolder<Item, T> item(String modId, String name, Supplier<T> itemSupplier) {
         return RegUtils.getRegistries((String)modId).items.register(name, itemSupplier);
     }
 
-    public static RegistryObject<Item> blockItem(String modId, String name, RegistryObject<Block> block) {
+    public static DeferredHolder<Item, Item> blockItem(String modId, String name, DeferredHolder<Block, ? extends Block> block) {
         return RegUtils.getRegistries((String)modId).items.register(name, () -> new BlockItem((Block)block.get(), new Item.Properties()));
     }
 
-    public static <T extends Entity> RegistryObject<EntityType<T>> entity(String modId, String name, EntityType.Builder<T> builder) {
+    public static <T extends Entity> DeferredHolder<EntityType<?>, EntityType<T>> entity(String modId, String name, EntityType.Builder<T> builder) {
         return RegUtils.getRegistries((String)modId).entities.register(name, () -> builder.build(name));
     }
 
     public static BlockBehaviour.Properties stone() {
-        return BlockBehaviour.Properties.copy((BlockBehaviour)Blocks.STONE).strength(1.5f, 6.0f);
+        return BlockBehaviour.Properties.ofFullCopy((Block)Blocks.STONE).strength(1.5f, 6.0f);
     }
 
     public static Item.Properties itemProps() {
@@ -250,7 +250,7 @@ public class RegUtils {
     }
 
     public static BlockBehaviour.Properties copy(Block block) {
-        return BlockBehaviour.Properties.copy((BlockBehaviour)block);
+        return BlockBehaviour.Properties.ofFullCopy((Block)block);
     }
 
     public static String[] getRegisteredMods() {
@@ -266,9 +266,9 @@ public class RegUtils {
 
         ModRegistries(String modId, IEventBus eventBus) {
             this.eventBus = eventBus;
-            this.blocks = DeferredRegister.create((IForgeRegistry)ForgeRegistries.BLOCKS, (String)modId);
-            this.items = DeferredRegister.create((IForgeRegistry)ForgeRegistries.ITEMS, (String)modId);
-            this.entities = DeferredRegister.create((IForgeRegistry)ForgeRegistries.ENTITY_TYPES, (String)modId);
+            this.blocks = DeferredRegister.create(Registries.BLOCK, (String)modId);
+            this.items = DeferredRegister.create(Registries.ITEM, (String)modId);
+            this.entities = DeferredRegister.create(Registries.ENTITY_TYPE, (String)modId);
             this.customRegisters = new HashMap();
             this.blocks.register(eventBus);
             this.items.register(eventBus);
@@ -276,4 +276,3 @@ public class RegUtils {
         }
     }
 }
-

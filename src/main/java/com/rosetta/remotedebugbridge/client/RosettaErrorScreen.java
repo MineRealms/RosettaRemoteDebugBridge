@@ -18,9 +18,9 @@
  *  net.minecraft.network.chat.FormattedText
  *  net.minecraft.network.chat.Style
  *  net.minecraft.util.FormattedCharSequence
- *  net.minecraftforge.api.distmarker.Dist
- *  net.minecraftforge.api.distmarker.OnlyIn
- *  net.minecraftforge.fml.loading.FMLPaths
+ *  net.neoforged.api.distmarker.Dist
+ *  net.neoforged.api.distmarker.OnlyIn
+ *  net.neoforged.fml.loading.FMLPaths
  *  org.jetbrains.annotations.NotNull
  *  org.jetbrains.annotations.Nullable
  */
@@ -48,9 +48,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.fml.loading.FMLPaths;
 import com.rosetta.remotedebugbridge.core.ScriptType;
 import com.rosetta.remotedebugbridge.logging.RosettaLogger;
 import com.rosetta.remotedebugbridge.logging.ScriptError;
@@ -84,7 +84,7 @@ extends Screen {
     protected void init() {
         super.init();
         int listBottom = this.height - 32;
-        this.list = new ErrorList(this, this.minecraft, this.width, this.height, 32, listBottom, this.viewing);
+        this.list = new ErrorList(this, this.minecraft, this.width, listBottom - 32, 32, this.viewing);
         this.addWidget(this.list);
         int btnY = this.height - 32 + 6;
         int cx = this.width / 2;
@@ -98,7 +98,7 @@ extends Screen {
     }
 
     public void render(@NotNull GuiGraphics g, int mx, int my, float delta) {
-        this.renderBackground(g);
+        this.renderBackground(g, mx, my, delta);
         this.list.render(g, mx, my, delta);
         boolean isError = this.viewing == this.errors;
         String title = "RosettaRemoteDebugBridge " + this.scriptType.getName() + " script " + (isError ? "errors" : "warnings");
@@ -141,10 +141,9 @@ extends Screen {
     extends ObjectSelectionList<ErrorEntry> {
         final RosettaErrorScreen screen;
 
-        public ErrorList(RosettaErrorScreen screen, Minecraft mc, int width, int height, int y0, int y1, List<ScriptError> lines) {
-            super(mc, width, height, y0, y1, 52);
+        public ErrorList(RosettaErrorScreen screen, Minecraft mc, int width, int height, int y0, List<ScriptError> lines) {
+            super(mc, width, height, y0, 52);
             this.screen = screen;
-            this.setRenderBackground(false);
             for (int i = 0; i < lines.size(); ++i) {
                 this.addEntry(new ErrorEntry(this, mc, i, lines.get(i)));
             }

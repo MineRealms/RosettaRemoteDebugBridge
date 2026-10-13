@@ -1,340 +1,142 @@
 /*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.minecraftforge.event.AddPackFindersEvent
- *  net.minecraftforge.event.AddReloadListenerEvent
- *  net.minecraftforge.event.AnvilUpdateEvent
- *  net.minecraftforge.event.AttachCapabilitiesEvent
- *  net.minecraftforge.event.BuildCreativeModeTabContentsEvent
- *  net.minecraftforge.event.CommandEvent
- *  net.minecraftforge.event.DifficultyChangeEvent
- *  net.minecraftforge.event.GameShuttingDownEvent
- *  net.minecraftforge.event.GrindstoneEvent
- *  net.minecraftforge.event.GrindstoneEvent$OnPlaceItem
- *  net.minecraftforge.event.GrindstoneEvent$OnTakeItem
- *  net.minecraftforge.event.ItemAttributeModifierEvent
- *  net.minecraftforge.event.ItemStackedOnOtherEvent
- *  net.minecraftforge.event.LootTableLoadEvent
- *  net.minecraftforge.event.ModMismatchEvent
- *  net.minecraftforge.event.OnDatapackSyncEvent
- *  net.minecraftforge.event.PlayLevelSoundEvent
- *  net.minecraftforge.event.PlayLevelSoundEvent$AtEntity
- *  net.minecraftforge.event.PlayLevelSoundEvent$AtPosition
- *  net.minecraftforge.event.RegisterCommandsEvent
- *  net.minecraftforge.event.RegisterGameTestsEvent
- *  net.minecraftforge.event.RegisterStructureConversionsEvent
- *  net.minecraftforge.event.ServerChatEvent
- *  net.minecraftforge.event.TagsUpdatedEvent
- *  net.minecraftforge.event.TickEvent$ClientTickEvent
- *  net.minecraftforge.event.TickEvent$LevelTickEvent
- *  net.minecraftforge.event.TickEvent$PlayerTickEvent
- *  net.minecraftforge.event.TickEvent$RenderTickEvent
- *  net.minecraftforge.event.TickEvent$ServerTickEvent
- *  net.minecraftforge.event.VanillaGameEvent
- *  net.minecraftforge.event.brewing.PlayerBrewedPotionEvent
- *  net.minecraftforge.event.brewing.PotionBrewEvent$Post
- *  net.minecraftforge.event.brewing.PotionBrewEvent$Pre
- *  net.minecraftforge.event.enchanting.EnchantmentLevelSetEvent
- *  net.minecraftforge.event.entity.EntityAttributeCreationEvent
- *  net.minecraftforge.event.entity.EntityAttributeModificationEvent
- *  net.minecraftforge.event.entity.EntityEvent$EnteringSection
- *  net.minecraftforge.event.entity.EntityEvent$EntityConstructing
- *  net.minecraftforge.event.entity.EntityEvent$Size
- *  net.minecraftforge.event.entity.EntityJoinLevelEvent
- *  net.minecraftforge.event.entity.EntityLeaveLevelEvent
- *  net.minecraftforge.event.entity.EntityMobGriefingEvent
- *  net.minecraftforge.event.entity.EntityMountEvent
- *  net.minecraftforge.event.entity.EntityStruckByLightningEvent
- *  net.minecraftforge.event.entity.EntityTeleportEvent$ChorusFruit
- *  net.minecraftforge.event.entity.EntityTeleportEvent$EnderEntity
- *  net.minecraftforge.event.entity.EntityTeleportEvent$EnderPearl
- *  net.minecraftforge.event.entity.EntityTeleportEvent$SpreadPlayersCommand
- *  net.minecraftforge.event.entity.EntityTeleportEvent$TeleportCommand
- *  net.minecraftforge.event.entity.EntityTravelToDimensionEvent
- *  net.minecraftforge.event.entity.ProjectileImpactEvent
- *  net.minecraftforge.event.entity.SpawnPlacementRegisterEvent
- *  net.minecraftforge.event.entity.item.ItemExpireEvent
- *  net.minecraftforge.event.entity.item.ItemTossEvent
- *  net.minecraftforge.event.entity.living.AnimalTameEvent
- *  net.minecraftforge.event.entity.living.BabyEntitySpawnEvent
- *  net.minecraftforge.event.entity.living.EnderManAngerEvent
- *  net.minecraftforge.event.entity.living.LivingAttackEvent
- *  net.minecraftforge.event.entity.living.LivingBreatheEvent
- *  net.minecraftforge.event.entity.living.LivingChangeTargetEvent
- *  net.minecraftforge.event.entity.living.LivingConversionEvent$Post
- *  net.minecraftforge.event.entity.living.LivingConversionEvent$Pre
- *  net.minecraftforge.event.entity.living.LivingDamageEvent
- *  net.minecraftforge.event.entity.living.LivingDeathEvent
- *  net.minecraftforge.event.entity.living.LivingDestroyBlockEvent
- *  net.minecraftforge.event.entity.living.LivingDropsEvent
- *  net.minecraftforge.event.entity.living.LivingDrownEvent
- *  net.minecraftforge.event.entity.living.LivingEntityUseItemEvent$Finish
- *  net.minecraftforge.event.entity.living.LivingEntityUseItemEvent$Start
- *  net.minecraftforge.event.entity.living.LivingEntityUseItemEvent$Stop
- *  net.minecraftforge.event.entity.living.LivingEntityUseItemEvent$Tick
- *  net.minecraftforge.event.entity.living.LivingEquipmentChangeEvent
- *  net.minecraftforge.event.entity.living.LivingEvent$LivingJumpEvent
- *  net.minecraftforge.event.entity.living.LivingEvent$LivingTickEvent
- *  net.minecraftforge.event.entity.living.LivingEvent$LivingVisibilityEvent
- *  net.minecraftforge.event.entity.living.LivingExperienceDropEvent
- *  net.minecraftforge.event.entity.living.LivingFallEvent
- *  net.minecraftforge.event.entity.living.LivingGetProjectileEvent
- *  net.minecraftforge.event.entity.living.LivingHealEvent
- *  net.minecraftforge.event.entity.living.LivingHurtEvent
- *  net.minecraftforge.event.entity.living.LivingKnockBackEvent
- *  net.minecraftforge.event.entity.living.LivingMakeBrainEvent
- *  net.minecraftforge.event.entity.living.LivingPackSizeEvent
- *  net.minecraftforge.event.entity.living.LivingSwapItemsEvent
- *  net.minecraftforge.event.entity.living.LivingSwapItemsEvent$Hands
- *  net.minecraftforge.event.entity.living.LivingUseTotemEvent
- *  net.minecraftforge.event.entity.living.LootingLevelEvent
- *  net.minecraftforge.event.entity.living.MobEffectEvent$Added
- *  net.minecraftforge.event.entity.living.MobEffectEvent$Applicable
- *  net.minecraftforge.event.entity.living.MobEffectEvent$Expired
- *  net.minecraftforge.event.entity.living.MobEffectEvent$Remove
- *  net.minecraftforge.event.entity.living.MobSpawnEvent$AllowDespawn
- *  net.minecraftforge.event.entity.living.MobSpawnEvent$FinalizeSpawn
- *  net.minecraftforge.event.entity.living.MobSpawnEvent$PositionCheck
- *  net.minecraftforge.event.entity.living.MobSpawnEvent$SpawnPlacementCheck
- *  net.minecraftforge.event.entity.living.PotionColorCalculationEvent
- *  net.minecraftforge.event.entity.living.ShieldBlockEvent
- *  net.minecraftforge.event.entity.living.ZombieEvent$SummonAidEvent
- *  net.minecraftforge.event.entity.player.AdvancementEvent$AdvancementEarnEvent
- *  net.minecraftforge.event.entity.player.AdvancementEvent$AdvancementProgressEvent
- *  net.minecraftforge.event.entity.player.AnvilRepairEvent
- *  net.minecraftforge.event.entity.player.ArrowLooseEvent
- *  net.minecraftforge.event.entity.player.ArrowNockEvent
- *  net.minecraftforge.event.entity.player.AttackEntityEvent
- *  net.minecraftforge.event.entity.player.BonemealEvent
- *  net.minecraftforge.event.entity.player.CriticalHitEvent
- *  net.minecraftforge.event.entity.player.EntityItemPickupEvent
- *  net.minecraftforge.event.entity.player.FillBucketEvent
- *  net.minecraftforge.event.entity.player.ItemFishedEvent
- *  net.minecraftforge.event.entity.player.ItemTooltipEvent
- *  net.minecraftforge.event.entity.player.PermissionsChangedEvent
- *  net.minecraftforge.event.entity.player.PlayerContainerEvent$Close
- *  net.minecraftforge.event.entity.player.PlayerContainerEvent$Open
- *  net.minecraftforge.event.entity.player.PlayerDestroyItemEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$BreakSpeed
- *  net.minecraftforge.event.entity.player.PlayerEvent$Clone
- *  net.minecraftforge.event.entity.player.PlayerEvent$HarvestCheck
- *  net.minecraftforge.event.entity.player.PlayerEvent$ItemCraftedEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$ItemPickupEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$ItemSmeltedEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$LoadFromFile
- *  net.minecraftforge.event.entity.player.PlayerEvent$NameFormat
- *  net.minecraftforge.event.entity.player.PlayerEvent$PlayerChangeGameModeEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$PlayerChangedDimensionEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$PlayerLoggedInEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$PlayerLoggedOutEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$PlayerRespawnEvent
- *  net.minecraftforge.event.entity.player.PlayerEvent$SaveToFile
- *  net.minecraftforge.event.entity.player.PlayerEvent$StartTracking
- *  net.minecraftforge.event.entity.player.PlayerEvent$StopTracking
- *  net.minecraftforge.event.entity.player.PlayerEvent$TabListNameFormat
- *  net.minecraftforge.event.entity.player.PlayerFlyableFallEvent
- *  net.minecraftforge.event.entity.player.PlayerInteractEvent$EntityInteract
- *  net.minecraftforge.event.entity.player.PlayerInteractEvent$EntityInteractSpecific
- *  net.minecraftforge.event.entity.player.PlayerInteractEvent$LeftClickBlock
- *  net.minecraftforge.event.entity.player.PlayerInteractEvent$LeftClickEmpty
- *  net.minecraftforge.event.entity.player.PlayerInteractEvent$RightClickBlock
- *  net.minecraftforge.event.entity.player.PlayerInteractEvent$RightClickEmpty
- *  net.minecraftforge.event.entity.player.PlayerInteractEvent$RightClickItem
- *  net.minecraftforge.event.entity.player.PlayerNegotiationEvent
- *  net.minecraftforge.event.entity.player.PlayerSetSpawnEvent
- *  net.minecraftforge.event.entity.player.PlayerSleepInBedEvent
- *  net.minecraftforge.event.entity.player.PlayerSpawnPhantomsEvent
- *  net.minecraftforge.event.entity.player.PlayerWakeUpEvent
- *  net.minecraftforge.event.entity.player.PlayerXpEvent$LevelChange
- *  net.minecraftforge.event.entity.player.PlayerXpEvent$PickupXp
- *  net.minecraftforge.event.entity.player.PlayerXpEvent$XpChange
- *  net.minecraftforge.event.entity.player.SleepingLocationCheckEvent
- *  net.minecraftforge.event.entity.player.SleepingTimeCheckEvent
- *  net.minecraftforge.event.entity.player.TradeWithVillagerEvent
- *  net.minecraftforge.event.furnace.FurnaceFuelBurnTimeEvent
- *  net.minecraftforge.event.level.AlterGroundEvent
- *  net.minecraftforge.event.level.BlockEvent$BlockToolModificationEvent
- *  net.minecraftforge.event.level.BlockEvent$BreakEvent
- *  net.minecraftforge.event.level.BlockEvent$CreateFluidSourceEvent
- *  net.minecraftforge.event.level.BlockEvent$CropGrowEvent$Post
- *  net.minecraftforge.event.level.BlockEvent$CropGrowEvent$Pre
- *  net.minecraftforge.event.level.BlockEvent$EntityMultiPlaceEvent
- *  net.minecraftforge.event.level.BlockEvent$EntityPlaceEvent
- *  net.minecraftforge.event.level.BlockEvent$FarmlandTrampleEvent
- *  net.minecraftforge.event.level.BlockEvent$FluidPlaceBlockEvent
- *  net.minecraftforge.event.level.BlockEvent$NeighborNotifyEvent
- *  net.minecraftforge.event.level.BlockEvent$PortalSpawnEvent
- *  net.minecraftforge.event.level.ChunkDataEvent$Load
- *  net.minecraftforge.event.level.ChunkDataEvent$Save
- *  net.minecraftforge.event.level.ChunkEvent$Load
- *  net.minecraftforge.event.level.ChunkEvent$Unload
- *  net.minecraftforge.event.level.ChunkTicketLevelUpdatedEvent
- *  net.minecraftforge.event.level.ChunkWatchEvent$UnWatch
- *  net.minecraftforge.event.level.ChunkWatchEvent$Watch
- *  net.minecraftforge.event.level.ExplosionEvent$Detonate
- *  net.minecraftforge.event.level.ExplosionEvent$Start
- *  net.minecraftforge.event.level.LevelEvent$CreateSpawnPosition
- *  net.minecraftforge.event.level.LevelEvent$Load
- *  net.minecraftforge.event.level.LevelEvent$PotentialSpawns
- *  net.minecraftforge.event.level.LevelEvent$Save
- *  net.minecraftforge.event.level.LevelEvent$Unload
- *  net.minecraftforge.event.level.NoteBlockEvent$Change
- *  net.minecraftforge.event.level.NoteBlockEvent$Play
- *  net.minecraftforge.event.level.PistonEvent$Post
- *  net.minecraftforge.event.level.PistonEvent$Pre
- *  net.minecraftforge.event.level.SaplingGrowTreeEvent
- *  net.minecraftforge.event.level.SleepFinishedTimeEvent
- *  net.minecraftforge.event.server.ServerAboutToStartEvent
- *  net.minecraftforge.event.server.ServerStartedEvent
- *  net.minecraftforge.event.server.ServerStartingEvent
- *  net.minecraftforge.event.server.ServerStoppedEvent
- *  net.minecraftforge.event.server.ServerStoppingEvent
- *  net.minecraftforge.event.village.VillageSiegeEvent
- *  net.minecraftforge.event.village.VillagerTradesEvent
- *  net.minecraftforge.event.village.WandererTradesEvent
- *  net.minecraftforge.eventbus.api.SubscribeEvent
- *  net.minecraftforge.fml.common.Mod$EventBusSubscriber
- *  net.minecraftforge.fml.common.Mod$EventBusSubscriber$Bus
- *  net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
- *  net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
- *  net.minecraftforge.fml.event.lifecycle.FMLDedicatedServerSetupEvent
- *  net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent
- *  net.minecraftforge.fml.event.lifecycle.InterModEnqueueEvent
- *  net.minecraftforge.fml.event.lifecycle.InterModProcessEvent
+ * RosettaRemoteDebugBridge - NeoForge 1.21.1 event bridge.
+ *
+ * Forwards NeoForge mod-bus and game-bus events onto the script event bus
+ * (RosettaRemoteDebugBridge.EVENT_BUS). Event classes removed or renamed in
+ * NeoForge 1.21.1 are dropped or mapped to their replacements; see comments.
  */
 package com.rosetta.remotedebugbridge.api;
 
-import net.minecraftforge.event.AddPackFindersEvent;
-import net.minecraftforge.event.AddReloadListenerEvent;
-import net.minecraftforge.event.AnvilUpdateEvent;
-import net.minecraftforge.event.AttachCapabilitiesEvent;
-import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
-import net.minecraftforge.event.CommandEvent;
-import net.minecraftforge.event.DifficultyChangeEvent;
-import net.minecraftforge.event.GameShuttingDownEvent;
-import net.minecraftforge.event.GrindstoneEvent;
-import net.minecraftforge.event.ItemAttributeModifierEvent;
-import net.minecraftforge.event.ItemStackedOnOtherEvent;
-import net.minecraftforge.event.LootTableLoadEvent;
-import net.minecraftforge.event.ModMismatchEvent;
-import net.minecraftforge.event.OnDatapackSyncEvent;
-import net.minecraftforge.event.PlayLevelSoundEvent;
-import net.minecraftforge.event.RegisterCommandsEvent;
-import net.minecraftforge.event.RegisterGameTestsEvent;
-import net.minecraftforge.event.RegisterStructureConversionsEvent;
-import net.minecraftforge.event.ServerChatEvent;
-import net.minecraftforge.event.TagsUpdatedEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.VanillaGameEvent;
-import net.minecraftforge.event.brewing.PlayerBrewedPotionEvent;
-import net.minecraftforge.event.brewing.PotionBrewEvent;
-import net.minecraftforge.event.enchanting.EnchantmentLevelSetEvent;
-import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
-import net.minecraftforge.event.entity.EntityAttributeModificationEvent;
-import net.minecraftforge.event.entity.EntityEvent;
-import net.minecraftforge.event.entity.EntityJoinLevelEvent;
-import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
-import net.minecraftforge.event.entity.EntityMobGriefingEvent;
-import net.minecraftforge.event.entity.EntityMountEvent;
-import net.minecraftforge.event.entity.EntityStruckByLightningEvent;
-import net.minecraftforge.event.entity.EntityTeleportEvent;
-import net.minecraftforge.event.entity.EntityTravelToDimensionEvent;
-import net.minecraftforge.event.entity.ProjectileImpactEvent;
-import net.minecraftforge.event.entity.SpawnPlacementRegisterEvent;
-import net.minecraftforge.event.entity.item.ItemExpireEvent;
-import net.minecraftforge.event.entity.item.ItemTossEvent;
-import net.minecraftforge.event.entity.living.AnimalTameEvent;
-import net.minecraftforge.event.entity.living.BabyEntitySpawnEvent;
-import net.minecraftforge.event.entity.living.EnderManAngerEvent;
-import net.minecraftforge.event.entity.living.LivingAttackEvent;
-import net.minecraftforge.event.entity.living.LivingBreatheEvent;
-import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
-import net.minecraftforge.event.entity.living.LivingConversionEvent;
-import net.minecraftforge.event.entity.living.LivingDamageEvent;
-import net.minecraftforge.event.entity.living.LivingDeathEvent;
-import net.minecraftforge.event.entity.living.LivingDestroyBlockEvent;
-import net.minecraftforge.event.entity.living.LivingDropsEvent;
-import net.minecraftforge.event.entity.living.LivingDrownEvent;
-import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
-import net.minecraftforge.event.entity.living.LivingEquipmentChangeEvent;
-import net.minecraftforge.event.entity.living.LivingEvent;
-import net.minecraftforge.event.entity.living.LivingExperienceDropEvent;
-import net.minecraftforge.event.entity.living.LivingFallEvent;
-import net.minecraftforge.event.entity.living.LivingGetProjectileEvent;
-import net.minecraftforge.event.entity.living.LivingHealEvent;
-import net.minecraftforge.event.entity.living.LivingHurtEvent;
-import net.minecraftforge.event.entity.living.LivingKnockBackEvent;
-import net.minecraftforge.event.entity.living.LivingMakeBrainEvent;
-import net.minecraftforge.event.entity.living.LivingPackSizeEvent;
-import net.minecraftforge.event.entity.living.LivingSwapItemsEvent;
-import net.minecraftforge.event.entity.living.LivingUseTotemEvent;
-import net.minecraftforge.event.entity.living.LootingLevelEvent;
-import net.minecraftforge.event.entity.living.MobEffectEvent;
-import net.minecraftforge.event.entity.living.MobSpawnEvent;
-import net.minecraftforge.event.entity.living.PotionColorCalculationEvent;
-import net.minecraftforge.event.entity.living.ShieldBlockEvent;
-import net.minecraftforge.event.entity.living.ZombieEvent;
-import net.minecraftforge.event.entity.player.AdvancementEvent;
-import net.minecraftforge.event.entity.player.AnvilRepairEvent;
-import net.minecraftforge.event.entity.player.ArrowLooseEvent;
-import net.minecraftforge.event.entity.player.ArrowNockEvent;
-import net.minecraftforge.event.entity.player.AttackEntityEvent;
-import net.minecraftforge.event.entity.player.BonemealEvent;
-import net.minecraftforge.event.entity.player.CriticalHitEvent;
-import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
-import net.minecraftforge.event.entity.player.FillBucketEvent;
-import net.minecraftforge.event.entity.player.ItemFishedEvent;
-import net.minecraftforge.event.entity.player.ItemTooltipEvent;
-import net.minecraftforge.event.entity.player.PermissionsChangedEvent;
-import net.minecraftforge.event.entity.player.PlayerContainerEvent;
-import net.minecraftforge.event.entity.player.PlayerDestroyItemEvent;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.entity.player.PlayerFlyableFallEvent;
-import net.minecraftforge.event.entity.player.PlayerInteractEvent;
-import net.minecraftforge.event.entity.player.PlayerNegotiationEvent;
-import net.minecraftforge.event.entity.player.PlayerSetSpawnEvent;
-import net.minecraftforge.event.entity.player.PlayerSleepInBedEvent;
-import net.minecraftforge.event.entity.player.PlayerSpawnPhantomsEvent;
-import net.minecraftforge.event.entity.player.PlayerWakeUpEvent;
-import net.minecraftforge.event.entity.player.PlayerXpEvent;
-import net.minecraftforge.event.entity.player.SleepingLocationCheckEvent;
-import net.minecraftforge.event.entity.player.SleepingTimeCheckEvent;
-import net.minecraftforge.event.entity.player.TradeWithVillagerEvent;
-import net.minecraftforge.event.furnace.FurnaceFuelBurnTimeEvent;
-import net.minecraftforge.event.level.AlterGroundEvent;
-import net.minecraftforge.event.level.BlockEvent;
-import net.minecraftforge.event.level.ChunkDataEvent;
-import net.minecraftforge.event.level.ChunkEvent;
-import net.minecraftforge.event.level.ChunkTicketLevelUpdatedEvent;
-import net.minecraftforge.event.level.ChunkWatchEvent;
-import net.minecraftforge.event.level.ExplosionEvent;
-import net.minecraftforge.event.level.LevelEvent;
-import net.minecraftforge.event.level.NoteBlockEvent;
-import net.minecraftforge.event.level.PistonEvent;
-import net.minecraftforge.event.level.SaplingGrowTreeEvent;
-import net.minecraftforge.event.level.SleepFinishedTimeEvent;
-import net.minecraftforge.event.server.ServerAboutToStartEvent;
-import net.minecraftforge.event.server.ServerStartedEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
-import net.minecraftforge.event.server.ServerStoppedEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
-import net.minecraftforge.event.village.VillageSiegeEvent;
-import net.minecraftforge.event.village.VillagerTradesEvent;
-import net.minecraftforge.event.village.WandererTradesEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLDedicatedServerSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent;
-import net.minecraftforge.fml.event.lifecycle.InterModEnqueueEvent;
-import net.minecraftforge.fml.event.lifecycle.InterModProcessEvent;
 import com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.event.lifecycle.FMLDedicatedServerSetupEvent;
+import net.neoforged.fml.event.lifecycle.FMLLoadCompleteEvent;
+import net.neoforged.fml.event.lifecycle.InterModEnqueueEvent;
+import net.neoforged.fml.event.lifecycle.InterModProcessEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import net.neoforged.neoforge.event.AddPackFindersEvent;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
+import net.neoforged.neoforge.event.AnvilUpdateEvent;
+import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import net.neoforged.neoforge.event.CommandEvent;
+import net.neoforged.neoforge.event.DifficultyChangeEvent;
+import net.neoforged.neoforge.event.GameShuttingDownEvent;
+import net.neoforged.neoforge.event.GrindstoneEvent;
+import net.neoforged.neoforge.event.ItemAttributeModifierEvent;
+import net.neoforged.neoforge.event.ItemStackedOnOtherEvent;
+import net.neoforged.neoforge.event.LootTableLoadEvent;
+import net.neoforged.neoforge.event.ModMismatchEvent;
+import net.neoforged.neoforge.event.OnDatapackSyncEvent;
+import net.neoforged.neoforge.event.PlayLevelSoundEvent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.RegisterGameTestsEvent;
+import net.neoforged.neoforge.event.RegisterStructureConversionsEvent;
+import net.neoforged.neoforge.event.ServerChatEvent;
+import net.neoforged.neoforge.event.TagsUpdatedEvent;
+import net.neoforged.neoforge.event.VanillaGameEvent;
+import net.neoforged.neoforge.event.brewing.PlayerBrewedPotionEvent;
+import net.neoforged.neoforge.event.brewing.PotionBrewEvent;
+import net.neoforged.neoforge.event.enchanting.EnchantmentLevelSetEvent;
+import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
+import net.neoforged.neoforge.event.entity.EntityAttributeModificationEvent;
+import net.neoforged.neoforge.event.entity.EntityEvent;
+import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
+import net.neoforged.neoforge.event.entity.EntityMobGriefingEvent;
+import net.neoforged.neoforge.event.entity.EntityMountEvent;
+import net.neoforged.neoforge.event.entity.EntityStruckByLightningEvent;
+import net.neoforged.neoforge.event.entity.EntityTeleportEvent;
+import net.neoforged.neoforge.event.entity.EntityTravelToDimensionEvent;
+import net.neoforged.neoforge.event.entity.ProjectileImpactEvent;
+import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
+import net.neoforged.neoforge.event.entity.item.ItemExpireEvent;
+import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
+import net.neoforged.neoforge.event.entity.living.AnimalTameEvent;
+import net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent;
+import net.neoforged.neoforge.event.entity.living.EnderManAngerEvent;
+import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
+import net.neoforged.neoforge.event.entity.living.LivingBreatheEvent;
+import net.neoforged.neoforge.event.entity.living.LivingChangeTargetEvent;
+import net.neoforged.neoforge.event.entity.living.LivingConversionEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDestroyBlockEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDrownEvent;
+import net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent;
+import net.neoforged.neoforge.event.entity.living.LivingEquipmentChangeEvent;
+import net.neoforged.neoforge.event.entity.living.LivingEvent;
+import net.neoforged.neoforge.event.entity.living.LivingExperienceDropEvent;
+import net.neoforged.neoforge.event.entity.living.LivingFallEvent;
+import net.neoforged.neoforge.event.entity.living.LivingGetProjectileEvent;
+import net.neoforged.neoforge.event.entity.living.LivingHealEvent;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
+import net.neoforged.neoforge.event.entity.living.LivingKnockBackEvent;
+import net.neoforged.neoforge.event.entity.living.LivingShieldBlockEvent;
+import net.neoforged.neoforge.event.entity.living.LivingSwapItemsEvent;
+import net.neoforged.neoforge.event.entity.living.LivingUseTotemEvent;
+import net.neoforged.neoforge.event.entity.living.MobDespawnEvent;
+import net.neoforged.neoforge.event.entity.living.MobEffectEvent;
+import net.neoforged.neoforge.event.entity.living.MobSpawnEvent;
+import net.neoforged.neoforge.event.entity.player.AdvancementEvent;
+import net.neoforged.neoforge.event.entity.player.AnvilRepairEvent;
+import net.neoforged.neoforge.event.entity.player.ArrowLooseEvent;
+import net.neoforged.neoforge.event.entity.player.ArrowNockEvent;
+import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
+import net.neoforged.neoforge.event.entity.player.BonemealEvent;
+import net.neoforged.neoforge.event.entity.player.CanContinueSleepingEvent;
+import net.neoforged.neoforge.event.entity.player.CanPlayerSleepEvent;
+import net.neoforged.neoforge.event.entity.player.CriticalHitEvent;
+import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
+import net.neoforged.neoforge.event.entity.player.ItemFishedEvent;
+import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+import net.neoforged.neoforge.event.entity.player.PermissionsChangedEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerContainerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerDestroyItemEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerFlyableFallEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerNegotiationEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerSetSpawnEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerSpawnPhantomsEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerWakeUpEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
+import net.neoforged.neoforge.event.entity.player.TradeWithVillagerEvent;
+import net.neoforged.neoforge.event.furnace.FurnaceFuelBurnTimeEvent;
+import net.neoforged.neoforge.event.level.AlterGroundEvent;
+import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.level.BlockGrowFeatureEvent;
+import net.neoforged.neoforge.event.level.ChunkDataEvent;
+import net.neoforged.neoforge.event.level.ChunkEvent;
+import net.neoforged.neoforge.event.level.ChunkTicketLevelUpdatedEvent;
+import net.neoforged.neoforge.event.level.ChunkWatchEvent;
+import net.neoforged.neoforge.event.level.ExplosionEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.level.NoteBlockEvent;
+import net.neoforged.neoforge.event.level.PistonEvent;
+import net.neoforged.neoforge.event.level.SleepFinishedTimeEvent;
+import net.neoforged.neoforge.event.level.block.CreateFluidSourceEvent;
+import net.neoforged.neoforge.event.level.block.CropGrowEvent;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.EntityTickEvent;
+import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.event.village.VillagerTradesEvent;
+import net.neoforged.neoforge.event.village.VillageSiegeEvent;
+import net.neoforged.neoforge.event.village.WandererTradesEvent;
 
 public class ForgeEventBridge {
 
-    @Mod.EventBusSubscriber(modid="rosetta_remote_debug_bridge", bus=Mod.EventBusSubscriber.Bus.MOD)
+    @EventBusSubscriber(modid="rosetta_remote_debug_bridge", bus=EventBusSubscriber.Bus.MOD)
     public static class ModBusHandler {
         @SubscribeEvent
         public static void onFMLCommonSetup(FMLCommonSetupEvent e) {
@@ -367,30 +169,30 @@ public class ForgeEventBridge {
         }
     }
 
-    @Mod.EventBusSubscriber(modid="rosetta_remote_debug_bridge", bus=Mod.EventBusSubscriber.Bus.FORGE)
+    @EventBusSubscriber(modid="rosetta_remote_debug_bridge", bus=EventBusSubscriber.Bus.GAME)
     public static class ForgeBusHandler {
         @SubscribeEvent
-        public static void onServerTick(TickEvent.ServerTickEvent e) {
+        public static void onServerTick(ServerTickEvent.Pre e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onClientTick(TickEvent.ClientTickEvent e) {
+        public static void onClientTick(ClientTickEvent.Pre e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onLevelTick(TickEvent.LevelTickEvent e) {
+        public static void onLevelTick(LevelTickEvent.Post e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onPlayerTick(TickEvent.PlayerTickEvent e) {
+        public static void onPlayerTick(PlayerTickEvent.Post e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onRenderTick(TickEvent.RenderTickEvent e) {
+        public static void onRenderTick(RenderFrameEvent.Pre e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -600,11 +402,6 @@ public class ForgeEventBridge {
         }
 
         @SubscribeEvent
-        public static void onFillBucket(FillBucketEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
         public static void onBonemeal(BonemealEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
@@ -614,13 +411,9 @@ public class ForgeEventBridge {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // EntityItemPickupEvent -> ItemEntityPickupEvent (NeoForge split into Pre/Post).
         @SubscribeEvent
-        public static void onEntityItemPickup(EntityItemPickupEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
-        public static void onItemPickup(PlayerEvent.ItemPickupEvent e) {
+        public static void onItemEntityPickup(ItemEntityPickupEvent.Post e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -665,22 +458,17 @@ public class ForgeEventBridge {
         }
 
         @SubscribeEvent
-        public static void onItemStackedOnOther(ItemStackedOnOtherEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
         public static void onItemAttributeModifier(ItemAttributeModifierEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onItemExpire(ItemExpireEvent e) {
+        public static void onItemStackedOnOther(ItemStackedOnOtherEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onGrindstone(GrindstoneEvent e) {
+        public static void onItemExpire(ItemExpireEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -720,22 +508,18 @@ public class ForgeEventBridge {
         }
 
         @SubscribeEvent
-        public static void onPlayerSleepInBed(PlayerSleepInBedEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
         public static void onPlayerWakeUp(PlayerWakeUpEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // SleepingLocationCheckEvent -> CanPlayerSleepEvent, SleepingTimeCheckEvent -> CanContinueSleepingEvent.
         @SubscribeEvent
-        public static void onSleepingLocationCheck(SleepingLocationCheckEvent e) {
+        public static void onCanPlayerSleep(CanPlayerSleepEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onSleepingTimeCheck(SleepingTimeCheckEvent e) {
+        public static void onCanContinueSleeping(CanContinueSleepingEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -779,18 +563,14 @@ public class ForgeEventBridge {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // LivingAttackEvent / LivingHurtEvent -> LivingIncomingDamageEvent (pre-damage).
         @SubscribeEvent
-        public static void onLivingAttack(LivingAttackEvent e) {
+        public static void onLivingIncomingDamage(LivingIncomingDamageEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onLivingHurt(LivingHurtEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
-        public static void onLivingDamage(LivingDamageEvent e) {
+        public static void onLivingDamage(LivingDamageEvent.Post e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -824,8 +604,9 @@ public class ForgeEventBridge {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // LivingEvent.LivingTickEvent -> EntityTickEvent.Post.
         @SubscribeEvent
-        public static void onLivingTick(LivingEvent.LivingTickEvent e) {
+        public static void onEntityTick(EntityTickEvent.Post e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -850,16 +631,6 @@ public class ForgeEventBridge {
         }
 
         @SubscribeEvent
-        public static void onLootingLevel(LootingLevelEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
-        public static void onLivingSwapItems(LivingSwapItemsEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
         public static void onLivingSwapItemsHands(LivingSwapItemsEvent.Hands e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
@@ -874,18 +645,14 @@ public class ForgeEventBridge {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // ShieldBlockEvent -> LivingShieldBlockEvent.
         @SubscribeEvent
-        public static void onShieldBlock(ShieldBlockEvent e) {
+        public static void onLivingShieldBlock(LivingShieldBlockEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
         public static void onLivingUseTotem(LivingUseTotemEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
-        public static void onLivingMakeBrain(LivingMakeBrainEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -896,16 +663,6 @@ public class ForgeEventBridge {
 
         @SubscribeEvent
         public static void onLivingVisibility(LivingEvent.LivingVisibilityEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
-        public static void onLivingPackSize(LivingPackSizeEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
-        public static void onPotionColorCalculation(PotionColorCalculationEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -925,22 +682,19 @@ public class ForgeEventBridge {
         }
 
         @SubscribeEvent
-        public static void onZombieSummonAid(ZombieEvent.SummonAidEvent e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
         public static void onSpawnPlacementCheck(MobSpawnEvent.SpawnPlacementCheck e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // MobSpawnEvent.FinalizeSpawn -> FinalizeSpawnEvent.
         @SubscribeEvent
-        public static void onFinalizeSpawn(MobSpawnEvent.FinalizeSpawn e) {
+        public static void onFinalizeSpawn(FinalizeSpawnEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // MobSpawnEvent.AllowDespawn -> MobDespawnEvent.
         @SubscribeEvent
-        public static void onAllowDespawn(MobSpawnEvent.AllowDespawn e) {
+        public static void onMobDespawn(MobDespawnEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -959,8 +713,9 @@ public class ForgeEventBridge {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // SpawnPlacementRegisterEvent -> RegisterSpawnPlacementsEvent.
         @SubscribeEvent
-        public static void onSpawnPlacementRegister(SpawnPlacementRegisterEvent e) {
+        public static void onSpawnPlacementRegister(RegisterSpawnPlacementsEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -1055,11 +810,6 @@ public class ForgeEventBridge {
         }
 
         @SubscribeEvent
-        public static void onAttachCapabilities(AttachCapabilitiesEvent<?> e) {
-            RosettaRemoteDebugBridge.EVENT_BUS.post(e);
-        }
-
-        @SubscribeEvent
         public static void onVanillaGameEvent(VanillaGameEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
@@ -1129,13 +879,14 @@ public class ForgeEventBridge {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // BlockEvent.CropGrowEvent moved to level.block.CropGrowEvent.
         @SubscribeEvent
-        public static void onCropGrowPre(BlockEvent.CropGrowEvent.Pre e) {
+        public static void onCropGrowPre(CropGrowEvent.Pre e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
         @SubscribeEvent
-        public static void onCropGrowPost(BlockEvent.CropGrowEvent.Post e) {
+        public static void onCropGrowPost(CropGrowEvent.Post e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -1144,8 +895,9 @@ public class ForgeEventBridge {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // BlockEvent.CreateFluidSourceEvent moved to level.block.CreateFluidSourceEvent.
         @SubscribeEvent
-        public static void onCreateFluidSource(BlockEvent.CreateFluidSourceEvent e) {
+        public static void onCreateFluidSource(CreateFluidSourceEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -1174,8 +926,9 @@ public class ForgeEventBridge {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
+        // SaplingGrowTreeEvent -> BlockGrowFeatureEvent.
         @SubscribeEvent
-        public static void onSaplingGrowTree(SaplingGrowTreeEvent e) {
+        public static void onBlockGrowFeature(BlockGrowFeatureEvent e) {
             RosettaRemoteDebugBridge.EVENT_BUS.post(e);
         }
 
@@ -1325,4 +1078,3 @@ public class ForgeEventBridge {
         }
     }
 }
-

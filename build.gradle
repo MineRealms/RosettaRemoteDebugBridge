@@ -1,9 +1,9 @@
 plugins {
+    id 'java-library'
     id 'eclipse'
     id 'idea'
     id 'maven-publish'
-    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
-    id 'org.spongepowered.mixin' version '0.7.38'
+    id 'net.neoforged.moddev' version '2.0.141'
 }
 
 version = mod_version
@@ -13,63 +13,55 @@ base {
     archivesName = mod_id
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
 
-minecraft {
-    mappings channel: mapping_channel, version: mapping_version
-    copyIdeResources = true
+neoForge {
+    version = project.neo_version
 
     runs {
         configureEach {
-            workingDirectory project.file('run')
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
-
-            mods {
-                "${mod_id}" {
-                    source sourceSets.main
-                }
-            }
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            systemProperty 'forge.logging.console.level', 'debug'
         }
 
         client {
-            property 'forge.enabledGameTestNamespaces', mod_id
+            client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
             if (project.hasProperty('quickPlay')) {
-                args '--quickPlaySingleplayer', project.property('quickPlay')
+                programArguments.addAll '--quickPlaySingleplayer', project.property('quickPlay')
             }
             if (project.hasProperty('quickJoin')) {
-                args '--quickPlayMultiplayer', project.property('quickJoin')
+                programArguments.addAll '--quickPlayMultiplayer', project.property('quickJoin')
             }
         }
 
         server {
-            property 'forge.enabledGameTestNamespaces', mod_id
-            args '--nogui'
+            server()
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
         }
 
         gameTestServer {
-            property 'forge.enabledGameTestNamespaces', mod_id
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
         }
 
         data {
-            workingDirectory project.file('run-data')
-            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+            data()
+            programArguments.addAll '--mod', mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
         }
     }
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
-
-// Static Mixin support: the annotation processor emits the refmap consumed by the
-// Mixin service at runtime, and `config`/`add` register the config in the jar
-// manifest (MixinConfigs) and package the refmap into the mod resources.
-mixin {
-    add sourceSets.main, 'rosetta_remote_debug_bridge.refmap.json'
-    config 'rosetta_remote_debug_bridge.mixins.json'
-    config 'rosetta_mohist_guard.mixins.json'
-}
 
 // Minimal compile-only stubs for the Bukkit types referenced by the public NexusTask
 // interface (exec task contract). They are NEVER packaged into the mod jar: the bukkitStubs
@@ -86,13 +78,6 @@ repositories {
 }
 
 dependencies {
-    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-
-    // Static (@Mixin) annotations + the refmap annotation processor. Both are
-    // compile-time only: at runtime the standard Mixin 0.8.5 bundled by Forge
-    // performs the transformation.
-    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
-
     // RainAPI repack (ECJ compiler + JavaParser, relocated under net.rain.repack)
     // and relocated Mixin fork (org.spongepowered.rain.asm).
     // Shaded into the mod output via processResources (see below) so the classes are
@@ -106,8 +91,8 @@ tasks.named('processResources', ProcessResources).configure {
     var replaceProperties = [
             minecraft_version      : minecraft_version,
             minecraft_version_range: minecraft_version_range,
-            forge_version          : forge_version,
-            forge_version_range    : forge_version_range,
+            neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
             loader_version_range   : loader_version_range,
             mod_id                 : mod_id,
             mod_name               : mod_name,
@@ -118,14 +103,14 @@ tasks.named('processResources', ProcessResources).configure {
     ]
     inputs.properties replaceProperties
 
-    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+    filesMatching(['META-INF/neoforge.mods.toml', 'pack.mcmeta']) {
         expand replaceProperties + [project: project]
     }
 
     from zipTree('libs/rainapi-repack-1.0.2.jar')
     from zipTree('libs/mixin-0.8.5-dev.jar')
     // The Mixin fork ships a JPMS module-info that re-registers an ITransformationService
-    // named "mixin", colliding with Forge's own service (Duplicate key mixin crash).
+    // named "mixin", colliding with the loader's own service (Duplicate key mixin crash).
     exclude 'module-info.class'
 }
 
@@ -141,8 +126,6 @@ tasks.named('jar', Jar).configure {
                 'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
         ])
     }
-
-    finalizedBy 'reobfJar'
 }
 
 publishing {

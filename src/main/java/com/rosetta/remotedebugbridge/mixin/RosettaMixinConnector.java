@@ -2,13 +2,13 @@
  * Decompiled with CFR 0.152.
  * 
  * Could not load the following classes:
- *  net.minecraftforge.fml.loading.FMLPaths
+ *  net.neoforged.fml.loading.FMLPaths
  *  org.spongepowered.asm.mixin.Mixins
  *  org.spongepowered.asm.mixin.connect.IMixinConnector
  */
 package com.rosetta.remotedebugbridge.mixin;
 
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.neoforged.fml.loading.FMLPaths;
 import com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge;
 import org.spongepowered.asm.mixin.Mixins;
 import org.spongepowered.asm.mixin.connect.IMixinConnector;

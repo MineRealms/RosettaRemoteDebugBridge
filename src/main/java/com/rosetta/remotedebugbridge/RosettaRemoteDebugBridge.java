@@ -2,29 +2,29 @@
  * Decompiled with CFR 0.152.
  * 
  * Could not load the following classes:
- *  net.minecraftforge.common.MinecraftForge
- *  net.minecraftforge.event.server.ServerStartingEvent
- *  net.minecraftforge.eventbus.api.SubscribeEvent
- *  net.minecraftforge.fml.common.Mod
- *  net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
- *  net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
- *  net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
+ *  net.neoforged.neoforge.common.NeoForge
+ *  net.neoforged.neoforge.event.server.ServerStartingEvent
+ *  net.neoforged.bus.api.SubscribeEvent
+ *  net.neoforged.fml.common.Mod
+ *  net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
+ *  net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
+ *  net.neoforged.fml.javafmlmod.FMLJavaModLoadingContext
  *  org.apache.logging.log4j.LogManager
  *  org.apache.logging.log4j.Logger
  */
 package com.rosetta.remotedebugbridge;
 
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.server.ServerStartedEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import com.rosetta.remotedebugbridge.debug.ClientDebugAgent;
 import com.rosetta.remotedebugbridge.debug.ClientSessionManager;
 import com.rosetta.remotedebugbridge.eventbus.bus.RosettaEventBus;
@@ -41,13 +41,15 @@ public class RosettaRemoteDebugBridge {
     public static final String MOD_ID = "rosetta_remote_debug_bridge";
     public static final Logger LOGGER = LogManager.getLogger();
     public static final RosettaEventBus EVENT_BUS = new RosettaEventBus();
+    public static IEventBus MOD_EVENT_BUS;
     private static RosettaCore coreInstance;
 
-    public RosettaRemoteDebugBridge() {
+    public RosettaRemoteDebugBridge(IEventBus modEventBus) {
         LOGGER.info("RosettaRemoteDebugBridge initializing...");
-        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::commonSetup);
-        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::clientSetup);
-        MinecraftForge.EVENT_BUS.register((Object)this);
+        MOD_EVENT_BUS = modEventBus;
+        modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(this::clientSetup);
+        NeoForge.EVENT_BUS.register((Object)this);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {

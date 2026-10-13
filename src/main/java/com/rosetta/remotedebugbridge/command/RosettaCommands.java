@@ -15,13 +15,13 @@
  *  net.minecraft.network.chat.Style
  *  net.minecraft.server.level.ServerPlayer
  *  net.minecraft.world.item.ItemStack
- *  net.minecraftforge.api.distmarker.Dist
- *  net.minecraftforge.event.RegisterCommandsEvent
- *  net.minecraftforge.eventbus.api.SubscribeEvent
- *  net.minecraftforge.fml.DistExecutor
- *  net.minecraftforge.fml.common.Mod$EventBusSubscriber
- *  net.minecraftforge.fml.common.Mod$EventBusSubscriber$Bus
- *  net.minecraftforge.registries.ForgeRegistries
+ *  net.neoforged.api.distmarker.Dist
+ *  net.neoforged.neoforge.event.RegisterCommandsEvent
+ *  net.neoforged.bus.api.SubscribeEvent
+ *  net.neoforged.fml.DistExecutor
+ *  net.neoforged.fml.common.Mod$EventBusSubscriber
+ *  net.neoforged.fml.common.Mod$EventBusSubscriber$Bus
+ *  net.minecraft.core.registries.BuiltInRegistries
  */
 package com.rosetta.remotedebugbridge.command;
 
@@ -38,12 +38,13 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.event.RegisterCommandsEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.DistExecutor;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.registries.ForgeRegistries;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.loading.FMLEnvironment;
+import net.minecraft.core.registries.BuiltInRegistries;
 import com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge;
 import com.rosetta.remotedebugbridge.client.RosettaClientEvents;
 import com.rosetta.remotedebugbridge.core.ScriptType;
@@ -51,7 +52,7 @@ import com.rosetta.remotedebugbridge.logging.RosettaLogger;
 import com.rosetta.remotedebugbridge.logging.ScriptError;
 import com.rosetta.remotedebugbridge.logging.ScriptErrorCollector;
 
-@Mod.EventBusSubscriber(modid="rosetta_remote_debug_bridge", bus=Mod.EventBusSubscriber.Bus.FORGE)
+@EventBusSubscriber(modid="rosetta_remote_debug_bridge", bus=EventBusSubscriber.Bus.GAME)
 public class RosettaCommands {
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -70,7 +71,9 @@ public class RosettaCommands {
         RosettaCommands.feedback(src, ChatFormatting.YELLOW, "\u25b6 RosettaRemoteDebugBridge: Reloading " + type.getName() + " scripts...");
         try {
             ScriptErrorCollector.clear(type);
-            DistExecutor.unsafeRunWhenOn((Dist)Dist.CLIENT, () -> () -> RosettaClientEvents.resetShownFlag());
+            if (FMLEnvironment.dist == Dist.CLIENT) {
+                RosettaClientEvents.resetShownFlag();
+            }
             RosettaRemoteDebugBridge.getCore().reload(type);
             int errCount = ScriptErrorCollector.getErrors(type).size();
             int warnCount = ScriptErrorCollector.getWarnings(type).size();
@@ -107,7 +110,7 @@ public class RosettaCommands {
                 RosettaCommands.feedback(src, ChatFormatting.RED, "You are not holding any item.");
                 return 0;
             }
-            String id = ForgeRegistries.ITEMS.getKey(stack.getItem()).toString();
+            String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
             MutableComponent label = Component.literal((String)"Item ID: ").withStyle(ChatFormatting.GRAY);
             MutableComponent value = Component.literal((String)id).setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, id)).withUnderlined(Boolean.valueOf(true)));
             MutableComponent hint = Component.literal((String)" (click to copy)").withStyle(ChatFormatting.DARK_GRAY);

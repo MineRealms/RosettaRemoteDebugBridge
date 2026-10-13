@@ -2,7 +2,7 @@
  * Decompiled with CFR 0.152.
  * 
  * Could not load the following classes:
- *  net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
+ *  net.neoforged.fml.javafmlmod.FMLJavaModLoadingContext
  *  net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler
  */
 package com.rosetta.remotedebugbridge.script;
@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import javax.tools.JavaCompiler;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.neoforged.bus.api.IEventBus;
 import com.rosetta.remotedebugbridge.eventbus.RosettaEventSubscriber;
 import com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge;
 import com.rosetta.remotedebugbridge.core.ScriptType;
@@ -274,8 +274,8 @@ public class JavaScriptLoader {
             }
             Method fmlMethod = this.findInitMethodWithFML(clazz);
             if (fmlMethod != null) {
-                this.logger.info("Executing {}(FMLContext) in {}", fmlMethod.getName(), clazz.getSimpleName());
-                fmlMethod.invoke(null, FMLJavaModLoadingContext.get());
+                this.logger.info("Executing {}(IEventBus) in {}", fmlMethod.getName(), clazz.getSimpleName());
+                fmlMethod.invoke(null, RosettaRemoteDebugBridge.MOD_EVENT_BUS);
                 return;
             }
             if (!Modifier.isAbstract(clazz.getModifiers()) && !clazz.isInterface()) {
@@ -312,7 +312,7 @@ public class JavaScriptLoader {
     private Method findInitMethodWithFML(Class<?> clazz) {
         for (String name : new String[]{"init", "initialize", "onLoad", "load", "register"}) {
             try {
-                Method m = clazz.getDeclaredMethod(name, FMLJavaModLoadingContext.class);
+                Method m = clazz.getDeclaredMethod(name, IEventBus.class);
                 if (!Modifier.isStatic(m.getModifiers()) || !Modifier.isPublic(m.getModifiers())) continue;
                 return m;
             }

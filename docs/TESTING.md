@@ -3,11 +3,11 @@
 > 测试代码与生产代码严格分离:测试脚本位于 `autotest/`(不参与构建,发布 jar 不含任何测试类)。
 > 相关文档:[README](../README.md) · [使用手册](USAGE.md) · [技术手册](ARCHITECTURE.md) · [CRD 设计](CRD-DESIGN.md)
 
-测试分三层:**Forge dev 无人值守回归**、**Mohist 实机验收清单**、**CRD 专项测试**。
+测试分三层:**NeoForge dev 无人值守回归**、**Mohist 实机验收清单**、**CRD 专项测试**。
 
 ---
 
-## 1. Forge dev 无人值守回归
+## 1. NeoForge dev 无人值守回归
 
 ### 1.1 组成
 
@@ -75,7 +75,7 @@ Copy-Item autotest\server\*.java run\RosettaRemoteDebugBridge\server\ -Force
 | 静态 Mixin | 注入 `Chicken.aiStep` 并自然触发 |
 | 数据包注入 | `rosetta_data` 谓词被 `execute if predicate` 命中 |
 | 脚本三阶段 | STARTUP/SERVER/CLIENT 装载与 `/java reload` 全量/单类型 |
-| 纯 Forge 路径 | 无 Bukkit 类路径下适配层惰性禁用、不崩溃 |
+| 纯 NeoForge 路径 | 无 Bukkit 类路径下适配层惰性禁用、不崩溃 |
 | 端口 | 默认 48790;与旧插件不同时监听 |
 
 ---
@@ -129,7 +129,7 @@ python autotest/crd/crd_script_gate.py --token <TOKEN> --player Dev
 
 ## 5. 覆盖边界
 
-- **纯 Forge(无 Bukkit)服务端**:适配层代码零硬引用、无 Bukkit 类路径下惰性禁用;未在真实纯 Forge 服实测;
+- **纯 NeoForge(无 Bukkit)服务端**:适配层代码零硬引用、无 Bukkit 类路径下惰性禁用;未在真实纯 NeoForge 服实测;
 - **动态 Mixin / CoreMod**:依赖外部 agent;不可用时自动降级,脚本与事件不受影响;
 - **CRD SCRIPT 执行**:必须由玩家在确认屏点 Accept(设计如此),自动化验证到 UI 门为止;
 - **插件热更新**:异常插件可能出现半卸载状态(静态状态/线程/资源残留),失败时插件处于未启用。

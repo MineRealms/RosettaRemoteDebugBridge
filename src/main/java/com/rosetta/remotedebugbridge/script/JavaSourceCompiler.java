@@ -2,7 +2,7 @@
  * Decompiled with CFR 0.152.
  * 
  * Could not load the following classes:
- *  net.minecraftforge.fml.loading.FMLPaths
+ *  net.neoforged.fml.loading.FMLPaths
  *  net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler
  *  org.apache.logging.log4j.LogManager
  *  org.apache.logging.log4j.Logger
@@ -48,7 +48,7 @@ import javax.tools.SimpleJavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.neoforged.fml.loading.FMLPaths;
 import com.rosetta.remotedebugbridge.script.CompiledClass;
 import net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler;
 import org.apache.logging.log4j.LogManager;
@@ -131,7 +131,11 @@ public class JavaSourceCompiler {
         for (String entry : System.getProperty("java.class.path", "").split(File.pathSeparator)) {
             Path p3;
             if (!entry.contains(".minecraft")) continue;
-            for (p3 = Paths.get(entry, new String[0]); p3 != null && !p3.getFileName().toString().equals(".minecraft"); p3 = p3.getParent()) {
+            for (p3 = Paths.get(entry, new String[0]); p3 != null; p3 = p3.getParent()) {
+                Path name = p3.getFileName();
+                if (name != null && name.toString().equals(".minecraft")) {
+                    break;
+                }
             }
             if (p3 == null || !Files.exists(p3, new LinkOption[0])) continue;
             return p3;
@@ -225,7 +229,7 @@ public class JavaSourceCompiler {
 
     private void scanAllForgeMods(Set<String> classpathEntries) {
         try {
-            Class<?> modListClass = Class.forName("net.minecraftforge.fml.ModList");
+            Class<?> modListClass = Class.forName("net.neoforged.fml.ModList");
             Object modList = modListClass.getMethod("get", new Class[0]).invoke(null, new Object[0]);
             Method getModsMethod = modListClass.getMethod("getMods", new Class[0]);
             List mods = (List)getModsMethod.invoke(modList, new Object[0]);
@@ -370,7 +374,7 @@ public class JavaSourceCompiler {
     }
 
     private void findMinecraftJars(Set<String> classpathEntries) {
-        String[] knownClasses = new String[]{"net.minecraft.world.item.Item", "net.minecraft.world.level.block.Block", "net.minecraftforge.registries.ForgeRegistries", "net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext", "net.minecraftforge.registries.DeferredRegister", "net.minecraftforge.registries.RegistryObject"};
+        String[] knownClasses = new String[]{"net.minecraft.world.item.Item", "net.minecraft.world.level.block.Block", "net.minecraft.core.registries.BuiltInRegistries", "net.neoforged.fml.javafmlmod.FMLJavaModLoadingContext", "net.neoforged.neoforge.registries.DeferredRegister", "net.neoforged.neoforge.registries.RegistryObject"};
         int foundCount = 0;
         for (String className : knownClasses) {
             try {

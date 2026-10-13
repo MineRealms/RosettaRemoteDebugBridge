@@ -52,7 +52,7 @@
   2. 会话建立时双方 ECDH 交换临时公钥（`session_hello` / `session_accept`），HKDF 派生 AES-256-GCM 会话密钥。
   3. 之后所有 payload 用 AES-GCM 加密（每次消息随机 nonce，序列号防重放）。
   4. 客户端缓存服务器公钥指纹（TOFU），变更时警告并要求重新确认。
-- **通道**：复用 Forge `SimpleChannel`（`rosetta_remote_debug_bridge:main`，版本已兼容缺失端）；客户端在登录后发送 `capability_hello`（是否具备客户端调试模块、版本），服务端仅对具备能力的客户端开启会话。
+- **通道**：复用 Rosetta 统一传输 payload —— NeoForge 1.21.1 的 `CustomPacketPayload`（`rosetta_remote_debug_bridge:main`，经 `RegisterPayloadHandlersEvent` 注册）；客户端在登录后发送 `capability_hello`（是否具备客户端调试模块、版本），服务端仅对具备能力的客户端开启会话。
 - **权限令牌**：会话建立时服务端签发一次性 `session_token`（内存态），所有信令必须携带；超时/断开即失效。
 
 ---
@@ -65,7 +65,7 @@
 │ Bridge 命令           │                   │ ClientDebugAgent        │
 │  clientdebug ...      │                   │  ├─ 授权检查(config)     │
 │  ↓                    │                   │  ├─ 会话确认 UI          │
-│ ClientSessionManager  │  Forge Channel    │  ├─ ECDH/AES-GCM        │
+│ ClientSessionManager  │  NeoForge Payload    │  ├─ ECDH/AES-GCM        │
 │  ├─ ECDH/密钥         │ ⇄  (加密 payload) │  ├─ 能力执行器           │
 │  ├─ 审计日志           │                   │  │   ├─ resource_reload  │
 │  └─ 权限校验           │                   │  │   ├─ push pack       │
@@ -116,6 +116,6 @@ clientdebug <player> close
 
 ## 7. 与现有资产的关系
 
-- 复用：Nexus 的 SimpleChannel/协议版本策略（`acceptMissingOr`，未装 mod 客户端不受影响）、ECJ 编译链路（服务端）、桥命令体系与审计模式。
-- 新增：客户端 source set（ForgeGradle 单 jar 双端）、`ClientDebugAgent`、确认 UI（1.20.1 Screen）、ECDH/AES 工具类。
+- 复用：Nexus 的统一传输 payload / 协议版本策略（`playBidirectional`，未装 mod 客户端不受影响）、ECJ 编译链路（服务端）、桥命令体系与审计模式。
+- 新增：客户端 source set（单 jar 双端）、`ClientDebugAgent`、确认 UI（1.21.1 Screen）、ECDH/AES 工具类。
 - displayTest 保持 `IGNORE_ALL_VERSION`：未装 mod 的客户端照常进服，只是不参与远程调试。

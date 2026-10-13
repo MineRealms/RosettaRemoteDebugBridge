@@ -6,12 +6,12 @@
 
 | 路径 | 说明 |
 |---|---|
-| `server/` | Forge dev 无人值守回归脚本(quickPlay 单人世界) |
+| `server/` | NeoForge dev 无人值守回归脚本(quickPlay 单人世界) |
 | `crd/` | CRD 客户端远程调试端到端脚本与测试模式配置模板 |
 
 测试覆盖与验收清单见 [../docs/TESTING.md](../docs/TESTING.md)。
 
-## 1. Forge dev 无人值守回归(server/)
+## 1. NeoForge dev 无人值守回归(server/)
 
 ```powershell
 # 生成/重置测试世界

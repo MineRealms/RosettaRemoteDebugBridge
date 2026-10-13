@@ -1,8 +1,8 @@
 # RosettaRemoteDebugBridge 技术手册
 
-> 适用版本:`rosetta_remote_debug_bridge-1.0.0`(Minecraft 1.20.1 / Forge 47.x / Java 17)
+> 适用版本:`rosetta_remote_debug_bridge-1.0.1`(Minecraft 1.21.1 / NeoForge 21.1.x / Java 21)
 > 覆盖范围:核心脚本引擎、脚本 API、静态与动态 Mixin、远程控制面、Bukkit/Mohist 适配、构建打包与安全模型。
-> 相关文档:[使用手册](USAGE.md) · [测试与验收](TESTING.md) · [README](../README.md)
+> 相关文档:[使用手册](USAGE.md) · [测试与验收](TESTING.md) · [1.21.1 移植报告](PORTING_1.21.1.md) · [README](../README.md)
 
 ---
 
@@ -32,7 +32,7 @@ RosettaRemoteDebugBridge 由四个子系统组成:
 | 子系统 | 作用 |
 |---|---|
 | **脚本引擎** | 运行期把 `RosettaRemoteDebugBridge/{startup,server,client}` 下的 Java 源码用内嵌 ECJ 编译进内存并执行,支持热重载 |
-| **脚本 API** | 事件总线、Forge 事件桥、映射反射助手、网络/注册封装、资源与数据包注入 |
+| **脚本 API** | 事件总线、NeoForge 事件桥、映射反射助手、网络/注册封装、资源与数据包注入 |
 | **Mixin 注入** | 静态 Mixin(构建期接线)与动态 Mixin/CoreMod(运行期源码编译注册,依赖 agent,自动降级) |
 | **远程控制面** | TCP 行 JSON 协议上的 14 个命令:远程执行 Java、控制台命令、反射调用、文件操作、插件热更新、Coder 插件桥 |
 
@@ -40,9 +40,9 @@ RosettaRemoteDebugBridge 由四个子系统组成:
 
 | 项 | 值 |
 |---|---|
-| Minecraft / Forge | 1.20.1 / 47.4.10(构建), 运行要求 `[47,)` |
-| Java | 17(脚本按 `-source 17 -target 17` 编译) |
-| 服务端 | 纯 Forge 或 Mohist 混合端(Bukkit 适配为可选运行时增强) |
+| Minecraft / NeoForge | 1.21.1 / 21.1.235(构建), 运行要求 `[21,)` |
+| Java | 21(脚本按 `-source 17 -target 17` 编译,可在 Java 21 运行时执行) |
+| 服务端 | 纯 NeoForge 或 Mohist 混合端(Bukkit 适配为可选运行时增强) |
 | modId / 分组 | `rosetta_remote_debug_bridge` / `com.rosetta.remotedebugbridge` |
 | 许可 | MIT(第三方组件见 `LICENSE.txt`) |
 
@@ -51,9 +51,9 @@ RosettaRemoteDebugBridge 由四个子系统组成:
 | 依赖 | 所在 | 命名空间 | 说明 |
 |---|---|---|---|
 | Eclipse ECJ | `libs/rainapi-repack-1.0.2.jar` | `net.rain.repack.ecj.*` | 脚本内存编译(自包含,无需 JDK) |
-| JavaParser | 同上 | `net.rain.repack.javaparser.*` | MCP→SRG 源码级转换 |
-| Mixin 分支 | `libs/mixin-0.8.5-dev.jar` | `org.spongepowered.rain.asm.*` | 动态 Mixin 管线与扩展 API;分支新 `META-INF/services` 已剥离 |
-| Forge 原生 Mixin | Forge 运行时 | `org.spongepowered.asm.*` | 静态 Mixin 的实际执行者;少量工具类 |
+| JavaParser | 同上 | `net.rain.repack.javaparser.*` | MCP→SRG 源码级转换(NeoForge 运行期为官方名,转换自动跳过,形同惰性) |
+| Mixin 分支 | `libs/mixin-0.8.5-dev.jar` | `org.spongepowered.rain.asm.*` | 动态 Mixin 管线与扩展 API;分支新 `META-INF/services` 已剥离(1.21.1 下暂缓接入) |
+| 运行时 Mixin | NeoForge 运行时 | `org.spongepowered.asm.*` | 静态 Mixin 的实际执行者;少量工具类 |
 | Bukkit 桩 | `src/bukkitStubs` | `org.bukkit.plugin.Plugin` | 仅编译期,不进 jar;运行时解析 Mohist 真类 |
 | 映射表 | 随包资源 | `assets/mappings/map/mappings.tsrg` | 运行期加载约 6,674 类 / 54,309 方法 |
 
@@ -62,8 +62,9 @@ RosettaRemoteDebugBridge 由四个子系统组成:
 
 ### 1.4 产物
 
-- `build/libs/rosetta_remote_debug_bridge-1.0.0.jar`:**自包含**(内嵌 ECJ/JavaParser 与 Mixin 分支)
-- 运行期不需要额外安装 RainAPI;Bukkit 相关功能在 Mohist 上自动激活,纯 Forge 上惰性禁用
+- `build/libs/rosetta_remote_debug_bridge-1.0.1.jar`:**自包含**(内嵌 ECJ/JavaParser 与 Mixin 分支)
+- 运行期不需要额外安装 RainAPI;Bukkit 相关功能在 Mohist 上自动激活,纯 NeoForge 上惰性禁用
+- NeoForge 无需 reobf:构建产物直接使用官方映射名,可直接部署
 
 ---
 
@@ -153,6 +154,8 @@ Files.walk(脚本目录)
 - **仅 SRG 运行时**对脚本源码做名称改写(JavaParser AST:方法调用/字段访问/简单名,
   沿继承链解析,包白名单内),dev 官方映射环境跳过;
 - 生产服因此可直接用官方名写脚本。
+- **NeoForge 1.21.1 备注**:运行期即为 Mojang 官方名(自 1.20.2 起取消 SRG),
+  `isSrgRuntime()` 恒为 false,该转换器在 1.21.1 上形同惰性;`mappings.tsrg` 仅保留供反射助手使用。
 
 ### 3.4 内存编译(ECJ)与 classpath
 
@@ -162,7 +165,7 @@ Files.walk(脚本目录)
   `-Drosetta.mixin.annotationProcessors=true` 时启用(默认 `-proc:none`);
 - `buildClassPath()` 顺序:
   1. `java.class.path`
-  2. `jdk.module.path`(dev 下补全 MC/Forge 模块 jar)
+  2. `jdk.module.path`(dev 下补全 MC/NeoForge 模块 jar)
   3. 模组自身 code source(脚本可引用本节所述 API)
   4. TCCL/系统类加载器 URL 链(`URLClassLoader` 与 `BuiltinClassLoader.ucp`)
   5. `ModList` 中所有 mod 文件
@@ -232,10 +235,18 @@ ECJ 的 `EclipseCompilerImpl.getCompilationUnits()` 对不在 source location �
 - 注销:`unregister(Class)`、`unregisterAll()`、`unregisterByClassLoader(ClassLoader)`;
 - 查询:`getRegisteredClasses/getRegisteredEventTypes/getTotalListenerCount`。
 
-### 4.2 Forge 事件桥(`api.ForgeEventBridge`)
+### 4.2 NeoNeoForge 事件桥(`api.ForgeEventBridge`)
 
-把 MOD 总线 6 个事件与 FORGE 总线 191 个事件原样转发到 `RosettaEventBus`;
+把 MOD 总线 6 个事件与 GAME 总线 **179** 个事件原样转发到 `RosettaEventBus`;
 脚本可用同一注解体系监听 Tick、玩家、生物、方块、世界、注册与数据等事件。
+
+- 事件集合按 **NeoForge 21.1.x** 实际类表重建(原 Forge 191 个游戏事件);19 个改名/搬家
+  (如 `TickEvent.ServerTickEvent`→`tick.ServerTickEvent.Pre`、`ShieldBlockEvent`→
+  `LivingShieldBlockEvent`、`SaplingGrowTreeEvent`→`BlockGrowFeatureEvent`);
+- 抽象基类事件只订阅其具体子类(`LivingDamageEvent.Post`、`LivingSwapItemsEvent.Hands`、
+  `GrindstoneEvent.OnPlaceItem` 等),否则 NeoForge 会拒绝注册;
+- 10 个上游已删除、无直接等价物的事件不再转发(见 [1.21.1 移植报告](PORTING_1.21.1.md))。
+- 注意:被取消语义(`isCanceled`)现通过 `net.neoforged.bus.api.ICancellableEvent` 判定。
 
 ### 4.3 映射反射助手(`script.utils.MinecraftHelper`)
 
@@ -247,17 +258,24 @@ ECJ 的 `EclipseCompilerImpl.getCompilationUnits()` 对不在 source location �
 
 ### 4.4 网络封装(`script.util.NetworkUtils`)
 
-- 通道在 `RosettaCore` 构造期以 modId 自动初始化(协议版本 `"1"`);
-- 每个消息类单次注册;接收侧按 `getReceptionSide()` 派发 `handleServer/handleClient`;
+- 基于 NeoForge 1.21.1 的 **`CustomPacketPayload` + `StreamCodec`** 体系:
+  所有脚本消息统一包装为单个 `RosettaPayload(type, byte[])`,在
+  `RegisterPayloadHandlersEvent` 中以 `playBidirectional` 注册一次(协议版本 `"1"`);
+- 每个消息类在 `register(clazz, factory)` 时按类名分配稳定 id;接收侧按 id 反查工厂、
+  反序列化并派发 `handleServer/handleClient`;
 - `PacketBuilder` DSL + 命名频道 `QuickPacket`;处理器用
   `onServerReceive/onClientReceive(channel, handler)` 注册;
-- 分发:`sendToServer/sendToPlayer/sendToAllPlayers/sendToNearby/sendToDimension`。
+- 分发:`sendToServer/sendToPlayer/sendToAllPlayers/sendToNearby/sendToDimension`
+  (内部走 `PacketDistributor`);
+- 契约变化:旧 `SimpleChannel`/`NetworkRegistry`/`IMessage` 已移除,`getChannel()` 不再提供。
 
 ### 4.5 注册封装(`script.util.RegUtils`)
 
 - `init(modId, modEventBus)` 建立 `BLOCKS/ITEMS/ENTITY_TYPES` 三个 `DeferredRegister`;
+- 1.21.1:原版注册表改用 `BuiltInRegistries`(`DeferredRegister.create(Registries.BLOCK/ITEM/ENTITY_TYPE, id)`),
+  注册返回类型为 `DeferredHolder`(旧 `RegistryObject` 已移除);
 - `createRegister(...)` 自定义注册表会保存引用并可用 `getCustomRegister(modId, name)` 取回;
-- 便捷方法覆盖方块/物品/实体/属性复制等。
+- 便捷方法覆盖方块/物品/实体/属性复制等(`BlockBehaviour.Properties.ofFullCopy`)。
 
 ### 4.6 Bukkit 注册门面(`net.NexusBukkit`)
 
@@ -273,15 +291,20 @@ NexusBukkit.registerCommand("rosetta", myCommand);
 
 - `RosettaRemoteDebugBridge/assets` → `rosetta_assets`(CLIENT_RESOURCES,TOP,required);
 - `RosettaRemoteDebugBridge/data` → `rosetta_data`(SERVER_DATA,TOP,required);
-- `RosettaResourcePack` 实时读盘,改文件后 `F3+T` 生效;
-- 数据包注意:1.20.1 谓词目录必须复数 `predicates/`;JSON 不得带 BOM;
-  Mohist 的 `/reload` 不重载数据包,需要重启服务端。
+- `RosettaResourcePack` 实时读盘,改文件后 `F3+T` 生效;`pack_format` 为 34(1.21.1);
+- 1.21.1 打包 API:`PackResources#location()`、`Pack.readMetaAndCreate(PackLocationInfo, ResourcesSupplier, PackType, PackSelectionConfig)`;
+- 数据包注意:JSON 不得带 BOM;Mohist 的 `/reload` 不重载数据包,需要重启服务端。
 
 ---
 
 ## 5. Mixin 子系统
 
-### 5.1 静态 Mixin(构建期接线,当前启用)
+> **1.21.1 移植状态(暂缓)**:按移植约定,Mixin 未接入。运行时日志会提示
+> `Dynamic Mixin pipeline unavailable`(与 1.20.1 现状一致);静态 mixin 配置
+> `rosetta_remote_debug_bridge.mixins.json` 当前为空(`mixins: []`)。以下为 1.20.1
+> 历史设计,待后续单独移植。
+
+### 5.1 静态 Mixin(构建期接线,1.20.1 历史设计)
 
 - 构建:MixinGradle `0.7.38` + `annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'`;
 - 配置:`mixin { add sourceSets.main, 'rosetta_remote_debug_bridge.refmap.json';
@@ -365,14 +388,14 @@ RosettaRemoteDebugBridge/mixins/ 源码
 | 命令 | 参数 | 说明 |
 |---|---|---|
 | `ping` | — | 桥/Java/Bukkit/玩家/插件状态 |
-| `console` | `{"command": "..."}` | 控制台执行命令;返回执行后日志增量(Bukkit 走 ConsoleCommandSender,纯 Forge 走原版分发器) |
+| `console` | `{"command": "..."}` | 控制台执行命令;返回执行后日志增量(Bukkit 走 ConsoleCommandSender,纯 NeoForge 走原版分发器) |
 | `exec` | `{"code":"<方法体>","args":[...]}` | ECJ 内存编译执行;返回结果字符串与耗时、生成类名 |
 | `reflect` | `{"class","method","target","args"}` | 反射调用;args 支持裸字符串或 `{type,value}` |
 | `upload` | `{"path","base64"}` | 写文件(限制在工作目录内) |
 | `read` | `{"file","offset","max"}` | 读文件(返回 base64) |
 | `tail` | `{"file","lines"}` | 读日志尾部 |
 | `ls` | `{"dir"}` | 列目录 |
-| `plugins` | — | Bukkit 插件列表;纯 Forge 退化为 ModList |
+| `plugins` | — | Bukkit 插件列表;纯 NeoForge 退化为 ModList |
 | `enable` / `disable` | `{"name"}` | 启停插件(无 Bukkit 报错) |
 | `update` | `{"name","path","base64"}` | 插件热更新(见 §6.7) |
 | `listener` | `{"action":"status\|cleanup\|restore"}` | 适配层监听器管理 |
@@ -383,13 +406,13 @@ RosettaRemoteDebugBridge/mixins/ 源码
 - 提交内容为**方法体**(需 `return`;空则等价 `return null;`);
 - 生成类 `rosetta.remote.generated.RosettaTask<nanotime>`;
 - Mohist 上自动 `import org.bukkit.*` 且实现 `NexusTask`,参数 `plugin` 为
-  `BukkitAdapter.ownerPlugin()`;纯 Forge 上 `plugin` 为 `null`;
+  `BukkitAdapter.ownerPlugin()`;纯 NeoForge 上 `plugin` 为 `null`;
 - SRG 运行时自动做 MCP→SRG 源码转换(可直接写官方名);
 - 编译依赖:内嵌 ECJ(无需 JDK);类加载用一次性 `DynamicClassLoader`(父为 TCCL)。
 
 ### 6.5 BukkitAdapter 与 NexusBukkit
 
-- `present()` 惰性探测 `org.bukkit.Bukkit`;纯 Forge 上所有操作惰性禁用;
+- `present()` 惰性探测 `org.bukkit.Bukkit`;纯 NeoForge 上所有操作惰性禁用;
 - owner 插件优先 `PluginManager#getPlugin("Mohist")`,否则插件列表首个;
 - 监听器注册优先 `com.mohistmc.api.ServerAPI#putBukkitEvents`,回退
   `PluginManager#registerEvents`;命令走 `CommandMap#register`;
@@ -535,7 +558,7 @@ clientdebug op <player> <op> [args JSON]
 
 ### 9.1 Gradle 与插件
 
-- ForgeGradle `[6.0,6.2)` + MixinGradle `0.7.38`;Gradle 8.8;Java toolchain 17;
+- ModDevGradle `net.neoforged.moddev` 2.0.141;Gradle 8.11.1;Java toolchain 21;NeoForge 21.1.235;
 - 编译输出英文错误(确保日志可读):`forkOptions.jvmArgs` 固定 `-Duser.language=en` 等。
 
 ### 9.2 影子依赖与排除
@@ -543,8 +566,8 @@ clientdebug op <player> <op> [args JSON]
 - `processResources { from zipTree('libs/rainapi-repack-1.0.2.jar'); from zipTree('libs/mixin-0.8.5-dev.jar') }`
   —— 依赖声明为 `compileOnly`,类在 dev 与产物中均属于 mod 模块;
 - **必须 `exclude 'module-info.class'`**:Mixin 分支的 JPMS 描述符会再次注册名为
-  `mixin` 的转换服务,与 Forge 冲突(`Duplicate key mixin` 崩溃);
-- 无 Shadow / jarJar;`jar` 以 `reobfJar` 收尾;清单包含 `MixinConfigs`(MixinGradle 注入)。
+  `mixin` 的转换服务,与加载器冲突(`Duplicate key mixin` 崩溃);
+- 无 Shadow / jarJar;**NeoForge 无 reobf**,`jar` 直接产出官方名产物,无需 `reobfJar`。
 
 ### 9.3 Bukkit 编译桩
 
@@ -564,7 +587,7 @@ clientdebug op <player> <op> [args JSON]
 | 产物 | 来源 | 剥离内容 |
 |---|---|---|
 | `rainapi-repack-1.0.2.jar` | 上游 RainAPI-1.0.2 | 仅保留 `net/rain/repack/**`(ECJ / JavaParser / 工具库) |
-| `mixin-0.8.5-dev.jar` | 改造版 Mixin 0.8.5 分支 | 移除 `META-INF/services/**` 与 MANIFEST(避免与 Forge 转换服务重名) |
+| `mixin-0.8.5-dev.jar` | 改造版 Mixin 0.8.5 分支 | 移除 `META-INF/services/**` 与 MANIFEST(避免与加载器转换服务重名) |
 
 重建这两个 jar 需要上游原件(RainAPI-1.0.2 与 mixin-0.8.5 分支);仓库不再携带
 未使用的原件副本(如未剥离的 RainAPI、旧版 ECJ/Equinox、原始 mixin-0.8.5)。

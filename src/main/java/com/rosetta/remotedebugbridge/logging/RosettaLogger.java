@@ -2,7 +2,7 @@
  * Decompiled with CFR 0.152.
  * 
  * Could not load the following classes:
- *  net.minecraftforge.fml.loading.FMLPaths
+ *  net.neoforged.fml.loading.FMLPaths
  *  org.apache.logging.log4j.LogManager
  *  org.apache.logging.log4j.Logger
  */
@@ -23,7 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.neoforged.fml.loading.FMLPaths;
 import com.rosetta.remotedebugbridge.core.ScriptType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

@@ -1,12 +1,13 @@
 # RosettaRemoteDebugBridge
 
-运行期 Java 脚本引擎 + 远程调试桥 + Mixin 注入的 Minecraft Forge 模组。
+运行期 Java 脚本引擎 + 远程调试桥 + Mixin 注入的 Minecraft NeoForge 模组。
 
 | 项 | 值 |
 |---|---|
-| 游戏 / 加载器 | Minecraft 1.20.1 / Forge 47.x(兼容 Mohist 混合端) |
-| Java | 17 |
-| 产物 | `rosetta_remote_debug_bridge-1.0.0.jar`(自包含,含 ECJ 编译器) |
+| 游戏 / 加载器 | Minecraft 1.21.1 / NeoForge 21.1.x(兼容 Mohist 混合端) |
+| Java | 21 |
+| 产物 | `rosetta_remote_debug_bridge-1.0.1.jar`(自包含,含 ECJ 编译器) |
+| 移植状态 | 见 [1.21.1 移植报告](docs/PORTING_1.21.1.md)(Mixin 子系统暂缓) |
 | 许可 | MIT(见 `LICENSE.txt`,含第三方组件声明) |
 | 文档 | [使用手册](docs/USAGE.md) · [技术手册](docs/ARCHITECTURE.md) · [测试与验收](docs/TESTING.md) · [CRD 设计](docs/CRD-DESIGN.md) |
 
@@ -33,13 +34,13 @@ mindmap
       多 class 与内部类注册
     脚本 API
       事件总线 注解自动注册
-      Forge 事件桥 197 个事件
+      NeoNeoForge 事件桥 185 个事件
       映射感知反射助手
       网络封装 命名频道
       注册封装 方块物品实体
       资源与数据包实时注入
-    静态 Mixin
-      MixinGradle 接线
+    静态 Mixin(暂缓)
+      构建期接线
       refmap 注解处理器
       探测 Mixin Chicken.aiStep
     动态 Mixin 与 CoreMod
@@ -183,7 +184,7 @@ mindmap
 
 ### 1. 安装
 
-把 `rosetta_remote_debug_bridge-1.0.0.jar` 放入服务端 `mods/`(纯 Forge 或 Mohist 均可)。
+把 `rosetta_remote_debug_bridge-1.0.1.jar` 放入服务端 `mods/`(纯 NeoForge 或 Mohist 均可)。
 
 ### 2. 首次启动
 
@@ -296,7 +297,7 @@ python legacy/tools/rosetta_remote.py --port 48790 --token <TOKEN> ping
 ## 构建与测试
 
 ```powershell
-# 构建(输出 build/libs/rosetta_remote_debug_bridge-1.0.0.jar)
+# 构建(输出 build/libs/rosetta_remote_debug_bridge-1.0.1.jar)
 .\gradlew.bat build
 
 # 开发客户端 / 服务端
@@ -327,6 +328,8 @@ python legacy/tools/rosetta_remote.py --port 48790 --token <TOKEN> ping
 
 本项目是上游 RainJava 1.0.0 的重构与重命名版本(上游作者 RainMelody / "Rain"),
 在原命名空间之外新增了静态 Mixin、Bukkit/Mohist 适配与远程控制面。
+当前分支已从 Minecraft 1.20.1 / Forge 47 迁移到 **Minecraft 1.21.1 / NeoForge 21.1.x / Java 21**
+(详见 [docs/PORTING_1.21.1.md](docs/PORTING_1.21.1.md);Mixin 子系统暂缓)。
 项目代码以 **MIT** 许可发布,详见 [`LICENSE.txt`](LICENSE.txt);
 随包分发的 ECJ(EPL-2.0)、Mixin(MIT)、JavaParser(Apache-2.0)以重定位形式提供,
 许可证与归属见同文件第三方声明。
