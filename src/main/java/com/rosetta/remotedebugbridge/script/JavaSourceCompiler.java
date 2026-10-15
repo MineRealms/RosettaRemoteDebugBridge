@@ -140,14 +140,16 @@ public class JavaSourceCompiler {
         for (String entry : System.getProperty("java.class.path", "").split(File.pathSeparator)) {
             Path p3;
             if (!entry.contains(".minecraft")) continue;
+            Path found = null;
             for (p3 = Paths.get(entry, new String[0]); p3 != null; p3 = p3.getParent()) {
                 Path name = p3.getFileName();
                 if (name != null && name.toString().equals(".minecraft")) {
+                    found = p3;
                     break;
                 }
             }
-            if (p3 == null || !Files.exists(p3, new LinkOption[0])) continue;
-            return p3;
+            if (found == null || !Files.exists(found, new LinkOption[0])) continue;
+            return found;
         }
         String home = System.getProperty("user.home");
         for (String s : new String[]{"/storage/emulated/0/FCL/.minecraft", home + "/.minecraft", home + "/AppData/Roaming/.minecraft", home + "/Library/Application Support/minecraft"}) {
