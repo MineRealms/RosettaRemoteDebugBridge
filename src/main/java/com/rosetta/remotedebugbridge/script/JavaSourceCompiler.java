@@ -106,6 +106,15 @@ public class JavaSourceCompiler {
     }
 
     private static Path findMinecraftDirectory() {
+        try {
+            return findMinecraftDirectoryInner();
+        } catch (Throwable t) {
+            LOGGER.warn("[JavaSourceCompiler] findMinecraftDirectory() failed: {} - skipping", (Object)t.toString());
+            return null;
+        }
+    }
+
+    private static Path findMinecraftDirectoryInner() {
         Path p;
         String gameDir = System.getProperty("minecraft.gameDir");
         if (gameDir != null && Files.exists(p = Paths.get(gameDir, new String[0]), new LinkOption[0])) {
@@ -183,15 +192,20 @@ public class JavaSourceCompiler {
     }
 
     private void scanMinecraftRootJars(Set<String> classpathEntries) {
-        Path mcRoot = JavaSourceCompiler.findMinecraftDirectory();
-        if (mcRoot == null) {
-            LOGGER.warn("[JavaSourceCompiler] findMinecraftDirectory() returned null, skipping root jar scan.");
-            return;
+        try {
+            Path mcRoot = JavaSourceCompiler.findMinecraftDirectory();
+            if (mcRoot == null) {
+                LOGGER.warn("[JavaSourceCompiler] findMinecraftDirectory() returned null, skipping root jar scan.");
+                return;
+            }
+            LOGGER.info("[JavaSourceCompiler] Scanning Minecraft root for jars: {}", (Object)mcRoot);
+            int[] counter = new int[]{0};
+            this.scanDirectoryForJars(mcRoot.toFile(), classpathEntries, counter, true);
+            LOGGER.info("[JavaSourceCompiler] Added {} jars from Minecraft root.", (Object)counter[0]);
         }
-        LOGGER.info("[JavaSourceCompiler] Scanning Minecraft root for jars: {}", (Object)mcRoot);
-        int[] counter = new int[]{0};
-        this.scanDirectoryForJars(mcRoot.toFile(), classpathEntries, counter, true);
-        LOGGER.info("[JavaSourceCompiler] Added {} jars from Minecraft root.", (Object)counter[0]);
+        catch (Throwable t) {
+            LOGGER.warn("[JavaSourceCompiler] Root jar scan failed: {} - skipping", (Object)t.toString());
+        }
     }
 
     private void scanDirectoryForJars(File dir, Set<String> classpathEntries, int[] counter, boolean skipSources) {
