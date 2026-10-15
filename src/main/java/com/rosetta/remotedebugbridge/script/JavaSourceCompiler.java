@@ -106,6 +106,15 @@ public class JavaSourceCompiler {
     }
 
     private static Path findMinecraftDirectory() {
+        try {
+            return findMinecraftDirectoryInner();
+        } catch (Throwable t) {
+            LOGGER.warn("[JavaSourceCompiler] findMinecraftDirectory() failed: {} - skipping", (Object)t.toString());
+            return null;
+        }
+    }
+
+    private static Path findMinecraftDirectoryInner() {
         Path p;
         String gameDir = System.getProperty("minecraft.gameDir");
         if (gameDir != null && Files.exists(p = Paths.get(gameDir, new String[0]), new LinkOption[0])) {
@@ -131,7 +140,7 @@ public class JavaSourceCompiler {
         for (String entry : System.getProperty("java.class.path", "").split(File.pathSeparator)) {
             Path p3;
             if (!entry.contains(".minecraft")) continue;
-            for (p3 = Paths.get(entry, new String[0]); p3 != null && !p3.getFileName().toString().equals(".minecraft"); p3 = p3.getParent()) {
+            for (p3 = Paths.get(entry, new String[0]); p3 != null && p3.getFileName() != null && !p3.getFileName().toString().equals(".minecraft"); p3 = p3.getParent()) {
             }
             if (p3 == null || !Files.exists(p3, new LinkOption[0])) continue;
             return p3;
@@ -179,15 +188,20 @@ public class JavaSourceCompiler {
     }
 
     private void scanMinecraftRootJars(Set<String> classpathEntries) {
-        Path mcRoot = JavaSourceCompiler.findMinecraftDirectory();
-        if (mcRoot == null) {
-            LOGGER.warn("[JavaSourceCompiler] findMinecraftDirectory() returned null, skipping root jar scan.");
-            return;
+        try {
+            Path mcRoot = JavaSourceCompiler.findMinecraftDirectory();
+            if (mcRoot == null) {
+                LOGGER.warn("[JavaSourceCompiler] findMinecraftDirectory() returned null, skipping root jar scan.");
+                return;
+            }
+            LOGGER.info("[JavaSourceCompiler] Scanning Minecraft root for jars: {}", (Object)mcRoot);
+            int[] counter = new int[]{0};
+            this.scanDirectoryForJars(mcRoot.toFile(), classpathEntries, counter, true);
+            LOGGER.info("[JavaSourceCompiler] Added {} jars from Minecraft root.", (Object)counter[0]);
         }
-        LOGGER.info("[JavaSourceCompiler] Scanning Minecraft root for jars: {}", (Object)mcRoot);
-        int[] counter = new int[]{0};
-        this.scanDirectoryForJars(mcRoot.toFile(), classpathEntries, counter, true);
-        LOGGER.info("[JavaSourceCompiler] Added {} jars from Minecraft root.", (Object)counter[0]);
+        catch (Throwable t) {
+            LOGGER.warn("[JavaSourceCompiler] Root jar scan failed: {} - skipping", (Object)t.toString());
+        }
     }
 
     private void scanDirectoryForJars(File dir, Set<String> classpathEntries, int[] counter, boolean skipSources) {
