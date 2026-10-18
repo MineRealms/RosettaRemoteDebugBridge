@@ -23,7 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import net.minecraftforge.fml.loading.FMLPaths;
+import com.rosetta.remotedebugbridge.platform.Platform;
 import com.rosetta.remotedebugbridge.core.ScriptType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,10 +46,10 @@ public class RosettaLogger {
     private static void initFiles() {
         Path dir;
         try {
-            dir = FMLPaths.GAMEDIR.get().resolve("logs").resolve("Rosetta");
+            dir = Platform.gameDir().resolve("logs").resolve("Rosetta");
         }
         catch (Exception e) {
-            MAIN_LOGGER.error("[Rosetta] FMLPaths not ready yet, cannot initialize log files", (Throwable)e);
+            MAIN_LOGGER.error("[Rosetta] game directory not ready yet, cannot initialize log files", (Throwable)e);
             initialized.set(false);
             return;
         }
@@ -113,7 +113,7 @@ public class RosettaLogger {
     }
 
     public static Path logFile(ScriptType type) {
-        return FMLPaths.GAMEDIR.get().resolve("logs").resolve("Rosetta").resolve(type.getName() + ".log");
+        return Platform.gameDir().resolve("logs").resolve("Rosetta").resolve(type.getName() + ".log");
     }
 
     public static void closeAll() {

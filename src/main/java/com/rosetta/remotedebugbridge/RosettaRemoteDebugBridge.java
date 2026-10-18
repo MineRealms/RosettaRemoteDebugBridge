@@ -1,130 +1,69 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.minecraftforge.common.MinecraftForge
- *  net.minecraftforge.event.server.ServerStartingEvent
- *  net.minecraftforge.eventbus.api.SubscribeEvent
- *  net.minecraftforge.fml.common.Mod
- *  net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent
- *  net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
- *  net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext
- *  org.apache.logging.log4j.LogManager
- *  org.apache.logging.log4j.Logger
- */
 package com.rosetta.remotedebugbridge;
 
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.server.ServerStartedEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import com.rosetta.remotedebugbridge.debug.ClientDebugAgent;
-import com.rosetta.remotedebugbridge.debug.ClientSessionManager;
-import com.rosetta.remotedebugbridge.eventbus.bus.RosettaEventBus;
 import com.rosetta.remotedebugbridge.core.RosettaCore;
 import com.rosetta.remotedebugbridge.core.ScriptType;
+import com.rosetta.remotedebugbridge.eventbus.bus.RosettaEventBus;
 import com.rosetta.remotedebugbridge.logging.RosettaLogger;
-import com.rosetta.remotedebugbridge.net.MaterialFallbackFix;
 import com.rosetta.remotedebugbridge.net.RemoteBridge;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-@Mod(value="rosetta_remote_debug_bridge")
-public class RosettaRemoteDebugBridge {
+public class RosettaRemoteDebugBridge implements ModInitializer {
+
     public static final String MOD_ID = "rosetta_remote_debug_bridge";
-    public static final Logger LOGGER = LogManager.getLogger();
+    public static final Logger LOGGER = LogManager.getLogger("RosettaRemoteDebugBridge");
     public static final RosettaEventBus EVENT_BUS = new RosettaEventBus();
+
     private static RosettaCore coreInstance;
+    private static volatile net.minecraft.server.MinecraftServer server;
 
-    public RosettaRemoteDebugBridge() {
-        LOGGER.info("RosettaRemoteDebugBridge initializing...");
-        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::commonSetup);
-        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::clientSetup);
-        MinecraftForge.EVENT_BUS.register((Object)this);
-    }
+    @Override
+    public void onInitialize() {
+        LOGGER.info("RosettaRemoteDebugBridge (Fabric) initializing...");
 
-    private void commonSetup(FMLCommonSetupEvent event) {
-    }
+        RosettaLogger.of(ScriptType.STARTUP).info("init");
+        coreInstance = new RosettaCore();
+        coreInstance.loadScripts(ScriptType.STARTUP);
 
-    private void clientSetup(FMLClientSetupEvent event) {
-        RosettaLogger logger = coreInstance.getLogger(ScriptType.CLIENT);
-        logger.info("Client setup - loading client scripts", new Object[0]);
-        try {
-            coreInstance.loadScripts(ScriptType.CLIENT);
-        }
-        catch (Exception e) {
-            logger.error("Failed to load client scripts: {}", e.getMessage(), e);
-        }
-        try {
-            ClientDebugAgent.onClientSetup();
-            com.rosetta.remotedebugbridge.debug.client.ClientDebugClientBridge.install();
-        }
-        catch (Throwable t) {
-            LOGGER.warn("Client remote debug setup failed: {}", t.toString());
-        }
-    }
+        com.rosetta.remotedebugbridge.command.RosettaCommands.register();
 
-    @SubscribeEvent
-    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
-        try {
-            if (event.getEntity() instanceof ServerPlayer player) {
-                ClientSessionManager.remove(player);
-                com.rosetta.remotedebugbridge.debug.ServerSessions.onPlayerDisconnect(player);
+        ServerLifecycleEvents.SERVER_STARTED.register(started -> {
+            server = started;
+            RosettaLogger logger = coreInstance.getLogger(ScriptType.SERVER);
+            logger.info("Server started - loading server scripts");
+            try {
+                coreInstance.loadScripts(ScriptType.SERVER);
+            } catch (Exception error) {
+                logger.error("Failed to load server scripts: {}", error.getMessage(), error);
             }
-        }
-        catch (Throwable t) {
-            LOGGER.warn("Client remote debug logout cleanup failed: {}", t.toString());
-        }
-    }
+            try {
+                RemoteBridge.start(started);
+            } catch (Throwable error) {
+                LOGGER.error("Failed to start RosettaNexus remote bridge (server keeps running)", error);
+            }
+        });
 
-    @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event) {
-        RosettaLogger logger = coreInstance.getLogger(ScriptType.SERVER);
-        logger.info("Server starting - loading server scripts", new Object[0]);
-        try {
-            coreInstance.loadScripts(ScriptType.SERVER);
-        }
-        catch (Exception e) {
-            logger.error("Failed to load server scripts: {}", e.getMessage(), e);
-        }
-    }
-
-    @SubscribeEvent
-    public void onServerStarted(ServerStartedEvent event) {
-        MaterialFallbackFix.applyIfEnabled();
-        try {
-            RemoteBridge.start(event.getServer());
-        }
-        catch (Throwable t) {
-            LOGGER.error("Failed to start RosettaNexus remote bridge (server keeps running)", t);
-        }
-    }
-
-    @SubscribeEvent
-    public void onServerStopping(ServerStoppingEvent event) {
-        try {
-            RemoteBridge.stop();
-        }
-        catch (Throwable t) {
-            LOGGER.warn("Failed to stop RosettaNexus remote bridge: {}", t.toString());
-        }
+        ServerLifecycleEvents.SERVER_STOPPING.register(stopping -> {
+            server = null;
+            try {
+                RemoteBridge.stop();
+            } catch (Throwable error) {
+                LOGGER.warn("Failed to stop RosettaNexus remote bridge: {}", error.toString());
+            }
+        });
     }
 
     public static RosettaCore getCore() {
         return coreInstance;
     }
 
-    static {
-        RosettaLogger.of(ScriptType.STARTUP).info("init", new Object[0]);
-        coreInstance = new RosettaCore();
-        coreInstance.loadScripts(ScriptType.STARTUP);
+    /**
+     * The running server (integrated or dedicated), or null outside a server lifetime.
+     * Scripts and exec snippets run on the server thread, so they can use this directly.
+     */
+    public static net.minecraft.server.MinecraftServer getServer() {
+        return server;
     }
 }
-

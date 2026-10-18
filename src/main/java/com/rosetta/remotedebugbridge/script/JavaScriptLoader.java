@@ -21,14 +21,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import javax.tools.JavaCompiler;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import com.rosetta.remotedebugbridge.eventbus.RosettaEventSubscriber;
 import com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge;
 import com.rosetta.remotedebugbridge.core.ScriptType;
 import com.rosetta.remotedebugbridge.script.CompiledClass;
 import com.rosetta.remotedebugbridge.script.DynamicClassLoader;
 import com.rosetta.remotedebugbridge.script.JavaSourceCompiler;
-import com.rosetta.remotedebugbridge.script.helper.RuntimeModuleOpener;
 import com.rosetta.remotedebugbridge.script.transformer.McpToSrgTransformer;
 import com.rosetta.remotedebugbridge.script.utils.MinecraftHelper;
 import com.rosetta.remotedebugbridge.logging.RosettaLogger;
@@ -46,7 +44,6 @@ public class JavaScriptLoader {
     public JavaScriptLoader(ScriptType scriptType) {
         this.scriptType = scriptType;
         this.logger = new RosettaLogger(scriptType);
-        RuntimeModuleOpener.openMixinModules();
         EclipseCompiler systemCompiler = null;
         try {
             systemCompiler = new EclipseCompiler();
@@ -77,32 +74,12 @@ public class JavaScriptLoader {
         }
     }
 
+    /**
+     * Dynamic mixins were dropped in the Fabric build: Fabric has no ModLauncher and no
+     * class retransformation, so runtime-injected mixins cannot be supported reliably.
+     */
     public void processMixins() {
-        if (!this.isAvailable()) {
-            return;
-        }
-        try {
-            Class<?> holder = Class.forName("org.spongepowered.rain.asm.mixin.transformer.MixinProcessorHolder");
-            Object available = holder.getMethod("isAvailable").invoke(null);
-            if (!Boolean.TRUE.equals(available)) {
-                this.logger.warn("Dynamic Mixin pipeline unavailable: the relocated Mixin service is not active in this environment (rosetta_remote_debug_bridge-core agent missing or disabled). Scripts and events are unaffected.");
-                return;
-            }
-            Path root = RosettaRemoteDebugBridge.getCore() != null ? RosettaRemoteDebugBridge.getCore().getRootPath() : null;
-            if (root == null) {
-                this.logger.warn("Dynamic Mixin pipeline skipped: RosettaRemoteDebugBridge core is not initialized");
-                return;
-            }
-            DynamicMixinLoader loader = new DynamicMixinLoader(this.compiler, this.classLoader, root);
-            loader.loadDynamicMixins();
-        }
-        catch (ClassNotFoundException e) {
-            this.logger.warn("Dynamic Mixin pipeline unavailable: relocated Mixin classes are missing from the runtime (rosetta_remote_debug_bridge-core not installed). Scripts and events are unaffected.");
-        }
-        catch (Throwable t) {
-            this.logger.error("Dynamic Mixin pipeline failed: {}", t.getMessage(), t);
-            ScriptErrorCollector.addFromThrowable(ScriptType.STARTUP, "mixins", t);
-        }
+        this.logger.debug("Dynamic mixins are not available in the Fabric build");
     }
 
     public void loadJavaScripts(Path directory) {
@@ -272,12 +249,6 @@ public class JavaScriptLoader {
                 initMethod.invoke(null, new Object[0]);
                 return;
             }
-            Method fmlMethod = this.findInitMethodWithFML(clazz);
-            if (fmlMethod != null) {
-                this.logger.info("Executing {}(FMLContext) in {}", fmlMethod.getName(), clazz.getSimpleName());
-                fmlMethod.invoke(null, FMLJavaModLoadingContext.get());
-                return;
-            }
             if (!Modifier.isAbstract(clazz.getModifiers()) && !clazz.isInterface()) {
                 try {
                     clazz.getDeclaredConstructor(new Class[0]).newInstance(new Object[0]);
@@ -300,20 +271,6 @@ public class JavaScriptLoader {
             try {
                 Method m = clazz.getDeclaredMethod(name, new Class[0]);
                 if (!Modifier.isStatic(m.getModifiers()) || !Modifier.isPublic(m.getModifiers()) || m.getParameterCount() != 0) continue;
-                return m;
-            }
-            catch (NoSuchMethodException noSuchMethodException) {
-                // empty catch block
-            }
-        }
-        return null;
-    }
-
-    private Method findInitMethodWithFML(Class<?> clazz) {
-        for (String name : new String[]{"init", "initialize", "onLoad", "load", "register"}) {
-            try {
-                Method m = clazz.getDeclaredMethod(name, FMLJavaModLoadingContext.class);
-                if (!Modifier.isStatic(m.getModifiers()) || !Modifier.isPublic(m.getModifiers())) continue;
                 return m;
             }
             catch (NoSuchMethodException noSuchMethodException) {

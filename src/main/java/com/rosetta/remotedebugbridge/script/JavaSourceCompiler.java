@@ -48,7 +48,9 @@ import javax.tools.SimpleJavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
-import net.minecraftforge.fml.loading.FMLPaths;
+import com.rosetta.remotedebugbridge.platform.Platform;
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
 import com.rosetta.remotedebugbridge.script.CompiledClass;
 import net.rain.repack.ecj.internal.compiler.tool.EclipseCompiler;
 import org.apache.logging.log4j.LogManager;
@@ -185,7 +187,7 @@ public class JavaSourceCompiler {
         if (sysLoader != classLoader) {
             this.extractClassPath(sysLoader, classpathEntries);
         }
-        this.scanAllForgeMods(classpathEntries);
+        this.scanFabricMods(classpathEntries);
         this.findMinecraftJars(classpathEntries);
         this.scanMinecraftRootJars(classpathEntries);
         this.scanModsFolder(classpathEntries);
@@ -243,35 +245,29 @@ public class JavaSourceCompiler {
         LOGGER.info("[JavaSourceCompiler] Added module exports for Mixin annotation processor");
     }
 
-    private void scanAllForgeMods(Set<String> classpathEntries) {
+    /**
+     * Adds every Fabric mod root (jar or exploded directory) to the compiler classpath.
+     */
+    private void scanFabricMods(Set<String> classpathEntries) {
+        int addedCount = 0;
         try {
-            Class<?> modListClass = Class.forName("net.minecraftforge.fml.ModList");
-            Object modList = modListClass.getMethod("get", new Class[0]).invoke(null, new Object[0]);
-            Method getModsMethod = modListClass.getMethod("getMods", new Class[0]);
-            List mods = (List)getModsMethod.invoke(modList, new Object[0]);
-            int addedCount = 0;
-            for (Object mod : mods) {
+            for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
                 try {
-                    String jarPath;
-                    Method getModIdMethod = mod.getClass().getMethod("getModId", new Class[0]);
-                    String modId = (String)getModIdMethod.invoke(mod, new Object[0]);
-                    Method getModFileMethod = mod.getClass().getMethod("getFile", new Class[0]);
-                    Object modFile = getModFileMethod.invoke(mod, new Object[0]);
-                    if (modFile == null || (jarPath = this.extractModFilePath(modFile, modId)) == null || !classpathEntries.add(jarPath)) continue;
-                    ++addedCount;
+                    for (Path path : mod.getOrigin().getPaths()) {
+                        if (Files.exists(path) && classpathEntries.add(path.toAbsolutePath().toString())) {
+                            ++addedCount;
+                        }
+                    }
                 }
-                catch (Exception e) {
-                    LOGGER.debug("[JavaSourceCompiler]   \u2717 Failed to process mod: " + e.getMessage());
+                catch (Throwable error) {
+                    LOGGER.debug("[JavaSourceCompiler]   \u2717 Failed to process mod {}: {}", mod.getMetadata().getId(), error.toString());
                 }
             }
         }
-        catch (ClassNotFoundException e) {
-            LOGGER.warn("[JavaSourceCompiler] ModList class not found - not running in Forge environment?");
+        catch (Throwable error) {
+            LOGGER.warn("[JavaSourceCompiler] Failed to scan Fabric mods: {}", error.toString());
         }
-        catch (Exception e) {
-            LOGGER.warn("[JavaSourceCompiler] Failed to scan Forge mods: " + e.getMessage());
-            e.printStackTrace();
-        }
+        LOGGER.info("[JavaSourceCompiler] Added {} paths from Fabric mods.", addedCount);
     }
 
     private String extractModFilePath(Object modFile, String modId) {
@@ -345,7 +341,7 @@ public class JavaSourceCompiler {
             if ((gameDir = System.getProperty("minecraft.gameDir")) != null) {
                 possibleModsFolders.add(new File(gameDir, "mods"));
             }
-            if ((modsdir = FMLPaths.GAMEDIR.get().resolve("mods")) != null) {
+            if ((modsdir = Platform.gameDir().resolve("mods")) != null) {
                 possibleModsFolders.add(modsdir.toFile());
             }
             int addedCount = 0;
@@ -390,7 +386,7 @@ public class JavaSourceCompiler {
     }
 
     private void findMinecraftJars(Set<String> classpathEntries) {
-        String[] knownClasses = new String[]{"net.minecraft.world.item.Item", "net.minecraft.world.level.block.Block", "net.minecraftforge.registries.ForgeRegistries", "net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext", "net.minecraftforge.registries.DeferredRegister", "net.minecraftforge.registries.RegistryObject"};
+        String[] knownClasses = new String[]{"net.minecraft.world.item.Item", "net.minecraft.world.level.block.Block", "net.minecraft.server.MinecraftServer", "net.fabricmc.loader.api.FabricLoader", "net.fabricmc.api.ModInitializer"};
         int foundCount = 0;
         for (String className : knownClasses) {
             try {

@@ -3,8 +3,10 @@ build/
 .gradle/
 mcmodsrepo/
 
-# Forge run directories
+# Run directories
 run/
+run-server/
+run-client/
 run-data/
 runs/
 src/generated/
@@ -24,8 +26,6 @@ bin/
 Thumbs.db
 Desktop.ini
 *.log
-
-# Local tooling output
 *.hprof
 crash-*.txt
 

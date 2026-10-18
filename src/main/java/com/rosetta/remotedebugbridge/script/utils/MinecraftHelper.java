@@ -22,7 +22,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
+import com.rosetta.remotedebugbridge.platform.Platform;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,33 +42,19 @@ public class MinecraftHelper {
     public static Path mappingFilePath = null;
     private static volatile Boolean srgRuntime;
 
+    /**
+     * True when the game classes carry remapped member names (Forge SRG or Fabric
+     * intermediary) instead of the official/Mojang names used in a dev run.
+     */
     public static boolean isSrgRuntime() {
         Boolean cached = srgRuntime;
         if (cached != null) {
             return cached;
         }
-        boolean result = false;
-        try {
-            Class<?> itemStack = Class.forName("net.minecraft.world.item.ItemStack");
-            try {
-                itemStack.getDeclaredField("EMPTY");
-                result = false;
-            }
-            catch (NoSuchFieldException officialMissing) {
-                try {
-                    itemStack.getDeclaredField("f_41583_");
-                    result = true;
-                }
-                catch (NoSuchFieldException srgMissing) {
-                    result = false;
-                }
-            }
-        }
-        catch (Throwable ignored) {
-            result = false;
-        }
+        boolean result = Platform.isRemappedRuntime();
         srgRuntime = result;
-        LOGGER.info("[MinecraftHelper] Runtime naming detected: {}", (Object)(result ? "SRG (production)" : "official (development)"));
+        LOGGER.info("[MinecraftHelper] Runtime namespace: {} ({})",
+                Platform.runtimeNamespace(), result ? "remapped - source rewrite enabled" : "named - source used as-is");
         return result;
     }
 
@@ -130,7 +116,7 @@ public class MinecraftHelper {
                 LOGGER.debug("ContextClassLoader failed ({}): {}", (Object)path, (Object)e.getMessage());
             }
         }
-        LOGGER.warn("Mapping file not found in resources, will rely on ObfuscationReflectionHelper");
+        LOGGER.warn("Mapping file not found in resources; only official names can be resolved");
     }
 
     public static InputStream getResourceAsStream(String resourcePath) {
@@ -165,7 +151,7 @@ public class MinecraftHelper {
         if (mappingFilePath != null) {
             return;
         }
-        for (String pathStr : possiblePaths = new String[]{"config/forge/mappings.tsrg", "mappings/mappings.tsrg", ".gradle/caches/forge_gradle/mcp_mappings/mappings.tsrg"}) {
+        for (String pathStr : possiblePaths = new String[]{"config/rosetta/mappings.tsrg", "mappings/mappings.tsrg", "RosettaRemoteDebugBridge/mappings.tsrg"}) {
             Path path = Paths.get(pathStr, new String[0]);
             if (!Files.exists(path, new LinkOption[0])) continue;
             mappingFilePath = path;
@@ -211,7 +197,8 @@ public class MinecraftHelper {
                 if (parts.length < 3) continue;
                 String fullDescriptor = parts[1];
                 String srgName = parts[2];
-                if (!srgName.startsWith("m_") && !srgName.equals("<init>") && !srgName.equals("<clinit>")) continue;
+                if (!srgName.startsWith("m_") && !srgName.startsWith("method_")
+                        && !srgName.equals("<init>") && !srgName.equals("<clinit>")) continue;
                 String keySimple = currentClass + "." + mcpName;
                 methodMappings.put(keySimple, srgName);
                 String returnDesc = MinecraftHelper.extractReturnTypeDescriptor(fullDescriptor);
@@ -225,7 +212,7 @@ public class MinecraftHelper {
                 continue;
             }
             String srgName = parts[1];
-            if (!srgName.startsWith("f_")) continue;
+            if (!srgName.startsWith("f_") && !srgName.startsWith("field_")) continue;
             fieldMappings.put(currentClass + "." + mcpName, srgName);
         }
         LOGGER.info("Parsed: {} classes, {} fields, {} methods (simple), {} methods (desc)", (Object)(classNameMappings.size() / 2), (Object)fieldMappings.size(), (Object)methodMappings.size(), (Object)methodMappingsByDescriptor.size());
@@ -529,13 +516,7 @@ public class MinecraftHelper {
                 return f;
             }
             catch (NoSuchFieldException f) {
-                try {
-                    Field f2 = ObfuscationReflectionHelper.findField((Class)clazz, (String)mcpName);
-                    f2.setAccessible(true);
-                    return f2;
-                }
-                catch (Exception e) {
-                    LOGGER.debug("ObfuscationReflectionHelper failed for {}.{}: {}", (Object)clazz.getName(), (Object)mcpName, (Object)e.getMessage());
+                {
                     String srgName = MinecraftHelper.findSrgFieldName(clazz.getName(), mcpName);
                     if (srgName != null) {
                         try {
@@ -579,12 +560,7 @@ public class MinecraftHelper {
                 return f;
             }
             catch (NoSuchFieldException f) {
-                try {
-                    Field f2 = ObfuscationReflectionHelper.findField((Class)clazz, (String)mcpName);
-                    f2.setAccessible(true);
-                    return f2;
-                }
-                catch (Exception f2) {
+                {
                     String srg = MinecraftHelper.findSrgFieldName(clazz.getName(), mcpName);
                     if (srg != null) {
                         try {
@@ -621,12 +597,7 @@ public class MinecraftHelper {
                 return f;
             }
             catch (NoSuchFieldException f) {
-                try {
-                    Field f2 = ObfuscationReflectionHelper.findField((Class)clazz, (String)mcpName);
-                    f2.setAccessible(true);
-                    return f2;
-                }
-                catch (Exception f2) {
+                {
                     String srg = MinecraftHelper.findSrgFieldName(clazz.getName(), mcpName);
                     if (srg != null) {
                         try {
@@ -663,12 +634,7 @@ public class MinecraftHelper {
                 return f;
             }
             catch (NoSuchFieldException f) {
-                try {
-                    Field f2 = ObfuscationReflectionHelper.findField((Class)clazz, (String)mcpName);
-                    f2.setAccessible(true);
-                    return f2;
-                }
-                catch (Exception f2) {
+                {
                     String srg = MinecraftHelper.findSrgFieldName(clazz.getName(), mcpName);
                     if (srg != null) {
                         try {

@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import net.minecraftforge.eventbus.api.Event;
 import com.rosetta.remotedebugbridge.eventbus.RosettaSubscribeEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -144,11 +143,12 @@ public class RosettaEventBus {
     }
 
     private static boolean isCanceled(Object event) {
-        if (event instanceof Event) {
-            Event forgeEvent = (Event)event;
-            return forgeEvent.isCanceled();
+        try {
+            java.lang.reflect.Method isCanceled = event.getClass().getMethod("isCanceled");
+            return Boolean.TRUE.equals(isCanceled.invoke(event));
+        } catch (Throwable ignored) {
+            return false;
         }
-        return false;
     }
 
     public Set<Class<?>> getRegisteredClasses() {

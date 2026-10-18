@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "rosetta_remote_debug_bridge",
+  "version": "${version}",
+  "name": "RosettaRemoteDebugBridge",
+  "description": "Runtime Java compiler with a remote control plane for live debugging and automated tests.",
+  "authors": ["Rain"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.rosetta.remotedebugbridge.RosettaRemoteDebugBridge"],
+    "client": ["com.rosetta.remotedebugbridge.RosettaClientEntry"]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric-api": "*",
+    "minecraft": "1.20.1"
+  }
+}

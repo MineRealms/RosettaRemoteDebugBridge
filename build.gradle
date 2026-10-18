@@ -1,9 +1,6 @@
 plugins {
-    id 'eclipse'
-    id 'idea'
+    id 'fabric-loom' version "${loom_version}"
     id 'maven-publish'
-    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
-    id 'org.spongepowered.mixin' version '0.7.38'
 }
 
 version = mod_version
@@ -13,70 +10,10 @@ base {
     archivesName = mod_id
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(17)
-
-println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
-
-minecraft {
-    mappings channel: mapping_channel, version: mapping_version
-    copyIdeResources = true
-
-    runs {
-        configureEach {
-            workingDirectory project.file('run')
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
-
-            mods {
-                "${mod_id}" {
-                    source sourceSets.main
-                }
-            }
-        }
-
-        client {
-            property 'forge.enabledGameTestNamespaces', mod_id
-            if (project.hasProperty('quickPlay')) {
-                args '--quickPlaySingleplayer', project.property('quickPlay')
-            }
-            if (project.hasProperty('quickJoin')) {
-                args '--quickPlayMultiplayer', project.property('quickJoin')
-            }
-        }
-
-        server {
-            property 'forge.enabledGameTestNamespaces', mod_id
-            args '--nogui'
-        }
-
-        gameTestServer {
-            property 'forge.enabledGameTestNamespaces', mod_id
-        }
-
-        data {
-            workingDirectory project.file('run-data')
-            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
-        }
-    }
-}
-
-sourceSets.main.resources { srcDir 'src/generated/resources' }
-
-// Static Mixin support: the annotation processor emits the refmap consumed by the
-// Mixin service at runtime, and `config`/`add` register the config in the jar
-// manifest (MixinConfigs) and package the refmap into the mod resources.
-mixin {
-    add sourceSets.main, 'rosetta_remote_debug_bridge.refmap.json'
-    config 'rosetta_remote_debug_bridge.mixins.json'
-    config 'rosetta_mohist_guard.mixins.json'
-}
-
-// Minimal compile-only stubs for the Bukkit types referenced by the public NexusTask
-// interface (exec task contract). They are NEVER packaged into the mod jar: the bukkitStubs
-// source set is only added to the main compile classpath, so on a real Mohist/Bukkit server
-// the runtime resolves the genuine org.bukkit classes supplied by the server.
-sourceSets {
-    bukkitStubs
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+    withSourcesJar()
 }
 
 repositories {
@@ -86,63 +23,51 @@ repositories {
 }
 
 dependencies {
-    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
 
-    // Static (@Mixin) annotations + the refmap annotation processor. Both are
-    // compile-time only: at runtime the standard Mixin 0.8.5 bundled by Forge
-    // performs the transformation.
-    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
-
-    // RainAPI repack (ECJ compiler + JavaParser, relocated under net.rain.repack)
-    // and relocated Mixin fork (org.spongepowered.rain.asm).
-    // Shaded into the mod output via processResources (see below) so the classes are
-    // part of the mod module in both dev runs and the built jar.
+    // RainAPI repack (ECJ compiler + JavaParser, relocated under net.rain.repack).
+    // Shaded into the mod output via processResources so the classes are part of the
+    // mod module in both dev runs and the built jar.
     compileOnly files('libs/rainapi-repack-1.0.2.jar')
-    compileOnly files('libs/mixin-0.8.5-dev.jar')
-    compileOnly sourceSets.bukkitStubs.output
 }
 
-tasks.named('processResources', ProcessResources).configure {
-    var replaceProperties = [
-            minecraft_version      : minecraft_version,
-            minecraft_version_range: minecraft_version_range,
-            forge_version          : forge_version,
-            forge_version_range    : forge_version_range,
-            loader_version_range   : loader_version_range,
-            mod_id                 : mod_id,
-            mod_name               : mod_name,
-            mod_license            : mod_license,
-            mod_version            : mod_version,
-            mod_authors            : mod_authors,
-            mod_description        : mod_description,
-    ]
-    inputs.properties replaceProperties
-
-    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
-        expand replaceProperties + [project: project]
+loom {
+    runs {
+        client {
+            client()
+            runDir 'run'
+        }
+        server {
+            server()
+            runDir 'run-server'
+            programArg '--nogui'
+        }
     }
-
-    from zipTree('libs/rainapi-repack-1.0.2.jar')
-    from zipTree('libs/mixin-0.8.5-dev.jar')
-    // The Mixin fork ships a JPMS module-info that re-registers an ITransformationService
-    // named "mixin", colliding with Forge's own service (Duplicate key mixin crash).
-    exclude 'module-info.class'
 }
 
-tasks.named('jar', Jar).configure {
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand(version: project.version)
+    }
+    from zipTree('libs/rainapi-repack-1.0.2.jar')
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+}
+
+jar {
     manifest {
         attributes([
-                'Specification-Title'     : mod_id,
-                'Specification-Vendor'    : mod_authors,
-                'Specification-Version'   : '1',
-                'Implementation-Title'    : project.name,
-                'Implementation-Version'  : project.jar.archiveVersion,
-                'Implementation-Vendor'   : mod_authors,
-                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+                'Implementation-Title'  : project.name,
+                'Implementation-Version': project.version
         ])
     }
-
-    finalizedBy 'reobfJar'
 }
 
 publishing {
@@ -156,10 +81,4 @@ publishing {
             url "file://${project.projectDir}/mcmodsrepo"
         }
     }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
-    options.fork = true
-    options.forkOptions.jvmArgs += ['-Duser.language=en', '-Duser.country=US', '-Dfile.encoding=UTF-8']
 }
