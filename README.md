@@ -58,5 +58,6 @@ python tools/fabric_smoke_test.py --token-file run-server/RosettaRemoteDebugBrid
 
 ## 文档
 
+- [Fabric 使用手册](docs/USAGE_FABRIC.md) — 安装、脚本、全部命令、自动化测试
 - [Fabric 移植说明与验证记录](docs/FABRIC.md)
 - [技术手册](docs/ARCHITECTURE.md) · [测试与验收](docs/TESTING.md) · [CRD 设计](docs/CRD-DESIGN.md)（Forge 分支内容）

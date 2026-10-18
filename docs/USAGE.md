@@ -1,4 +1,7 @@
-# RosettaRemoteDebugBridge 使用手册（`rosetta_remote_debug_bridge`）
+# RosettaRemoteDebugBridge 使用手册（Forge 47.x）
+
+> **本文档只适用于 Forge 分支（`master`）。** Fabric 1.20.1 的安装、命令与限制见
+> [USAGE_FABRIC.md](USAGE_FABRIC.md)。本分支没有动态 Mixin、CoreMod、Bukkit 适配和 CRD 通道。
 
 > 适用产物：`rosetta_remote_debug_bridge-1.0.0.jar`（Forge 1.20.1 单产物：脚本引擎 + 静态 Mixin + Bukkit 适配 + 远程控制面）
 > 配套文档：[README](../README.md) · [技术手册](ARCHITECTURE.md) · [测试与验收](TESTING.md)

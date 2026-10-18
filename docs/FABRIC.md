@@ -74,7 +74,11 @@ Fabric 正式实例的 Minecraft 类名是 intermediary（`net.minecraft.class_3
 
 当前分支按"Loom dev 运行期（named）"验收，这也是 Fabric 模组开发与自动化回归的常规环境。
 
-## 5. 冒烟测试
+## 5. 使用文档与冒烟测试
+
+完整的安装、脚本、命令与自动化测试写法见 [USAGE_FABRIC.md](USAGE_FABRIC.md)。
+
+
 
 ```bash
 ./gradlew runServer
