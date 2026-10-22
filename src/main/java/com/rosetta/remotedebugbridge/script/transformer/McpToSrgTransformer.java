@@ -166,12 +166,14 @@ public class McpToSrgTransformer {
             String current = className;
             HashSet<String> visited = new HashSet<String>();
             while (current != null && !visited.contains(current)) {
-                String srg;
                 visited.add(current);
-                if (descriptor != null && (srg = MinecraftHelper.findSrgMethodName(current, methodName, descriptor)) != null) {
-                    return srg;
+                String srg = descriptor != null ? MinecraftHelper.findSrgMethodName(current, methodName, descriptor) : null;
+                // Name-only lookup is only safe when the name has exactly one overload in total. With
+                // several (mapped or not) it returns whichever overload was parsed last and silently
+                // rewrites to a sibling (Component.getString() -> m_130668_ == getString(int)).
+                if (srg == null && MinecraftHelper.overloadCount(current, methodName) == 1) {
+                    srg = MinecraftHelper.findSrgMethodName(current, methodName);
                 }
-                srg = MinecraftHelper.findSrgMethodName(current, methodName);
                 if (srg != null) {
                     return srg;
                 }

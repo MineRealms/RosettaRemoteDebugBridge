@@ -35,6 +35,8 @@ public class MinecraftHelper {
     public static final Map<String, String> classNameMappings = new ConcurrentHashMap<String, String>();
     public static final Map<String, String> methodReturnTypes = new ConcurrentHashMap<String, String>();
     public static final Map<String, String> methodMappingsByDescriptor = new ConcurrentHashMap<String, String>();
+    /** class.method -> total overloads listed in the mapping (mapped AND unmapped); >1 cannot be resolved by name. */
+    public static final Map<String, Integer> methodOverloadCounts = new ConcurrentHashMap<String, Integer>();
     public static final Map<String, String> methodReturnTypesByDescriptor = new ConcurrentHashMap<String, String>();
     public static final Map<String, String> superClassCache = new ConcurrentHashMap<String, String>();
     public static final String MAPPING_RESOURCE_PATH = "/assets/mappings/map/mappings.tsrg";
@@ -211,8 +213,11 @@ public class MinecraftHelper {
                 if (parts.length < 3) continue;
                 String fullDescriptor = parts[1];
                 String srgName = parts[2];
-                if (!srgName.startsWith("m_") && !srgName.equals("<init>") && !srgName.equals("<clinit>")) continue;
                 String keySimple = currentClass + "." + mcpName;
+                // Count every overload, including the ones SRG leaves readable: an unmapped sibling is
+                // exactly what makes a name-only lookup unsafe.
+                methodOverloadCounts.merge(keySimple, 1, Integer::sum);
+                if (!srgName.startsWith("m_") && !srgName.equals("<init>") && !srgName.equals("<clinit>")) continue;
                 methodMappings.put(keySimple, srgName);
                 String returnDesc = MinecraftHelper.extractReturnTypeDescriptor(fullDescriptor);
                 if (returnDesc == null || (returnType = MinecraftHelper.jvmDescriptorToClassName(returnDesc)) == null) continue;
@@ -464,7 +469,6 @@ public class MinecraftHelper {
     }
 
     public static String findSrgMethodName(String className, String mcpName, String descriptor) {
-        String result;
         if (descriptor == null) {
             return MinecraftHelper.findSrgMethodName(className, mcpName);
         }
@@ -472,7 +476,22 @@ public class MinecraftHelper {
         if (!mappingLoaded) {
             MinecraftHelper.loadMappingsFromResource();
         }
-        return (result = methodMappingsByDescriptor.get(className + "." + mcpName + descriptor)) != null ? result : MinecraftHelper.findSrgMethodName(className, mcpName);
+        // No name-only fallback here: when the descriptor is known but misses, the overload is either
+        // unmapped (its source name is already correct) or the descriptor was inferred wrongly.
+        // Guessing by name picks a sibling overload and produces a bogus SRG name.
+        return methodMappingsByDescriptor.get(className + "." + mcpName + descriptor);
+    }
+
+    /**
+     * Total number of overloads listed for {@code className.mcpName} (mapped or not). Only 1 makes a
+     * name-only lookup unambiguous; 0 means the name is absent from the mapping.
+     */
+    public static int overloadCount(String className, String mcpName) {
+        if (!mappingLoaded) {
+            MinecraftHelper.loadMappingsFromResource();
+        }
+        Integer count = methodOverloadCounts.get(MinecraftHelper.normalizeClassName(className) + "." + mcpName);
+        return count != null ? count : 0;
     }
 
     public static String findMethodReturnType(String className, String mcpName) {
@@ -884,6 +903,7 @@ public class MinecraftHelper {
         classNameMappings.clear();
         methodReturnTypes.clear();
         methodMappingsByDescriptor.clear();
+        methodOverloadCounts.clear();
         methodReturnTypesByDescriptor.clear();
         superClassCache.clear();
         mappingLoaded = false;

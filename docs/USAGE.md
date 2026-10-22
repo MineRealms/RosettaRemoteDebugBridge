@@ -132,7 +132,7 @@ $ python ... console "plugins"
 - args：`{"code":"<Java 方法体>","args":["..."]}`；`args` 会作为 `Object[]` 传给任务。
 - 返回：`{"result":"<String.valueOf(返回值)>  [Nms]","class":"rosetta.remote.generated.RosettaTask<...>"}`。
 - 生成的类实现 `run(plugin,args)`，方法体必须 `return`；Mohist 上自动 `import org.bukkit.*` 并实现 `NexusTask`，纯 Forge 上 `plugin` 为 `null`。
-- SRG 运行时会自动做 MCP→SRG 源码转换（可写官方名）。
+- SRG 运行时会自动做 MCP→SRG 源码转换（可写官方名）；转换靠类型推断，推不出接收者类型、或方法名在映射里有多个重载（含未混淆的同名重载）时不改写，这类调用写 SRG 名或用反射。
 
 ```
 $ python ... eval 'return org.bukkit.Bukkit.getVersion();'
